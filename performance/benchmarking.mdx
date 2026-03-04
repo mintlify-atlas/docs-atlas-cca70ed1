@@ -1,0 +1,445 @@
+---
+title: Benchmarking Models
+description: Guide to benchmarking ONNX Runtime models for accurate performance measurement and comparison
+---
+
+## Overview
+
+Proper benchmarking is essential for understanding model performance and making optimization decisions. This guide covers tools, techniques, and best practices for benchmarking ONNX Runtime models.
+
+## Benchmarking Tools
+
+### 1. Python Performance Testing
+
+```python
+import onnxruntime as ort
+import numpy as np
+import time
+
+def benchmark_model(model_path, input_data, num_iterations=100, warmup=10):
+    """Benchmark ONNX model inference."""
+    # Create session
+    session_options = ort.SessionOptions()
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    session = ort.InferenceSession(model_path, session_options)
+    
+    # Get input name
+    input_name = session.get_inputs()[0].name
+    
+    # Warm-up runs
+    print(f"Warming up with {warmup} iterations...")
+    for _ in range(warmup):
+        session.run(None, {input_name: input_data})
+    
+    # Benchmark runs
+    print(f"Benchmarking with {num_iterations} iterations...")
+    latencies = []
+    
+    for _ in range(num_iterations):
+        start = time.perf_counter()
+        outputs = session.run(None, {input_name: input_data})
+        end = time.perf_counter()
+        latencies.append((end - start) * 1000)  # Convert to ms
+    
+    # Calculate statistics
+    latencies = np.array(latencies)
+    return {
+        'mean': np.mean(latencies),
+        'median': np.median(latencies),
+        'std': np.std(latencies),
+        'min': np.min(latencies),
+        'max': np.max(latencies),
+        'p50': np.percentile(latencies, 50),
+        'p90': np.percentile(latencies, 90),
+        'p95': np.percentile(latencies, 95),
+        'p99': np.percentile(latencies, 99),
+    }
+
+# Example usage
+input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+results = benchmark_model('model.onnx', input_data)
+
+print("Benchmark Results:")
+print(f"  Mean latency: {results['mean']:.2f} ms")
+print(f"  Median latency: {results['median']:.2f} ms")
+print(f"  Std deviation: {results['std']:.2f} ms")
+print(f"  P50: {results['p50']:.2f} ms")
+print(f"  P90: {results['p90']:.2f} ms")
+print(f"  P95: {results['p95']:.2f} ms")
+print(f"  P99: {results['p99']:.2f} ms")
+```
+
+### 2. Google Benchmark Integration
+
+ONNX Runtime includes support for Google Benchmark for C++ performance testing:
+
+```cpp
+#include <benchmark/benchmark.h>
+#include <onnxruntime_cxx_api.h>
+
+static void BM_ModelInference(benchmark::State& state) {
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "benchmark");
+    Ort::SessionOptions session_options;
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    
+    Ort::Session session(env, "model.onnx", session_options);
+    
+    // Prepare input
+    std::vector<int64_t> input_shape = {1, 3, 224, 224};
+    std::vector<float> input_data(1 * 3 * 224 * 224, 1.0f);
+    
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, input_data.data(), input_data.size(),
+        input_shape.data(), input_shape.size());
+    
+    const char* input_names[] = {"input"};
+    const char* output_names[] = {"output"};
+    
+    // Benchmark loop
+    for (auto _ : state) {
+        auto output_tensors = session.Run(
+            Ort::RunOptions{nullptr}, 
+            input_names, &input_tensor, 1,
+            output_names, 1);
+    }
+    
+    state.SetItemsProcessed(state.iterations());
+}
+
+BENCHMARK(BM_ModelInference)->Unit(benchmark::kMillisecond);
+BENCHMARK_MAIN();
+```
+
+### 3. Using run_benchmark.py
+
+ONNX Runtime provides a helper script for stable measurements:
+
+```bash
+# Run benchmark until measurements are stable
+python run_benchmark.py \
+    --program ./onnxruntime_benchmark \
+    --pattern "BM_ModelInference" \
+    --max_cv 0.05  # 5% coefficient of variation
+```
+
+The script runs the benchmark repeatedly until the coefficient of variation is within the desired threshold, ensuring stable and reproducible results.
+
+## Throughput Benchmarking
+
+### Batch Processing
+
+```python
+def benchmark_throughput(model_path, batch_size, duration_seconds=60):
+    """Measure throughput in inferences per second."""
+    session = ort.InferenceSession(model_path)
+    input_name = session.get_inputs()[0].name
+    input_shape = session.get_inputs()[0].shape
+    
+    # Adjust batch size
+    input_shape[0] = batch_size
+    input_data = np.random.randn(*input_shape).astype(np.float32)
+    
+    # Warm-up
+    for _ in range(10):
+        session.run(None, {input_name: input_data})
+    
+    # Measure throughput
+    start_time = time.time()
+    num_inferences = 0
+    
+    while time.time() - start_time < duration_seconds:
+        session.run(None, {input_name: input_data})
+        num_inferences += batch_size
+    
+    elapsed = time.time() - start_time
+    throughput = num_inferences / elapsed
+    
+    return {
+        'throughput': throughput,
+        'batch_size': batch_size,
+        'duration': elapsed,
+        'total_inferences': num_inferences
+    }
+
+# Test different batch sizes
+for batch_size in [1, 8, 16, 32, 64]:
+    results = benchmark_throughput('model.onnx', batch_size)
+    print(f"Batch size {batch_size}: {results['throughput']:.2f} inferences/sec")
+```
+
+### Multi-threading Throughput
+
+```python
+import concurrent.futures
+
+def benchmark_concurrent_throughput(model_path, num_threads=4, duration_seconds=60):
+    """Measure throughput with concurrent requests."""
+    def worker(session, input_name, input_data, stop_event):
+        count = 0
+        while not stop_event.is_set():
+            session.run(None, {input_name: input_data})
+            count += 1
+        return count
+    
+    # Create session (shared across threads)
+    session_options = ort.SessionOptions()
+    session_options.inter_op_num_threads = 1
+    session = ort.InferenceSession(model_path, session_options)
+    
+    input_name = session.get_inputs()[0].name
+    input_shape = session.get_inputs()[0].shape
+    input_data = np.random.randn(*input_shape).astype(np.float32)
+    
+    # Run concurrent benchmark
+    import threading
+    stop_event = threading.Event()
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(worker, session, input_name, input_data, stop_event) 
+                   for _ in range(num_threads)]
+        
+        time.sleep(duration_seconds)
+        stop_event.set()
+        
+        total_inferences = sum(f.result() for f in futures)
+    
+    throughput = total_inferences / duration_seconds
+    return {
+        'throughput': throughput,
+        'num_threads': num_threads,
+        'total_inferences': total_inferences
+    }
+```
+
+## Memory Benchmarking
+
+### Memory Usage Tracking
+
+```python
+import psutil
+import os
+
+def benchmark_memory(model_path, input_data, num_iterations=100):
+    """Measure memory usage during inference."""
+    process = psutil.Process(os.getpid())
+    
+    # Initial memory
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    
+    # Create session
+    session = ort.InferenceSession(model_path)
+    input_name = session.get_inputs()[0].name
+    
+    # Memory after session creation
+    session_memory = process.memory_info().rss / 1024 / 1024
+    
+    # Run inferences and track memory
+    memory_samples = []
+    for _ in range(num_iterations):
+        session.run(None, {input_name: input_data})
+        memory_samples.append(process.memory_info().rss / 1024 / 1024)
+    
+    return {
+        'initial_memory_mb': initial_memory,
+        'session_memory_mb': session_memory,
+        'peak_memory_mb': max(memory_samples),
+        'mean_memory_mb': np.mean(memory_samples),
+        'session_overhead_mb': session_memory - initial_memory
+    }
+```
+
+## GPU Benchmarking
+
+### CUDA Performance
+
+```python
+import pycuda.driver as cuda
+import pycuda.autoinit
+
+def benchmark_gpu(model_path, input_data, num_iterations=100):
+    """Benchmark GPU inference with detailed metrics."""
+    session_options = ort.SessionOptions()
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    
+    # Enable CUDA provider
+    providers = [(
+        'CUDAExecutionProvider', {
+            'device_id': 0,
+            'arena_extend_strategy': 'kNextPowerOfTwo',
+            'cudnn_conv_algo_search': 'EXHAUSTIVE',
+        }
+    )]
+    
+    session = ort.InferenceSession(model_path, session_options, providers=providers)
+    input_name = session.get_inputs()[0].name
+    
+    # Warm-up
+    for _ in range(10):
+        session.run(None, {input_name: input_data})
+    
+    # Synchronize GPU
+    cuda.Context.synchronize()
+    
+    # Benchmark with GPU timing
+    start_event = cuda.Event()
+    end_event = cuda.Event()
+    
+    gpu_times = []
+    
+    for _ in range(num_iterations):
+        start_event.record()
+        session.run(None, {input_name: input_data})
+        end_event.record()
+        end_event.synchronize()
+        
+        gpu_times.append(start_event.time_till(end_event))
+    
+    return {
+        'mean_gpu_ms': np.mean(gpu_times),
+        'median_gpu_ms': np.median(gpu_times),
+        'p95_gpu_ms': np.percentile(gpu_times, 95),
+        'p99_gpu_ms': np.percentile(gpu_times, 99),
+    }
+```
+
+## Comparing Execution Providers
+
+```python
+def compare_providers(model_path, input_data, providers_config):
+    """Compare performance across different execution providers."""
+    results = {}
+    
+    for provider_name, provider_options in providers_config.items():
+        print(f"\nBenchmarking {provider_name}...")
+        
+        session_options = ort.SessionOptions()
+        session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        
+        providers = [(provider_name, provider_options)] if provider_options else [provider_name]
+        
+        try:
+            session = ort.InferenceSession(model_path, session_options, providers=providers)
+            input_name = session.get_inputs()[0].name
+            
+            # Benchmark
+            latencies = []
+            for _ in range(10):  # Warm-up
+                session.run(None, {input_name: input_data})
+            
+            for _ in range(100):
+                start = time.perf_counter()
+                session.run(None, {input_name: input_data})
+                latencies.append((time.perf_counter() - start) * 1000)
+            
+            results[provider_name] = {
+                'mean_ms': np.mean(latencies),
+                'p95_ms': np.percentile(latencies, 95),
+                'success': True
+            }
+        except Exception as e:
+            results[provider_name] = {
+                'error': str(e),
+                'success': False
+            }
+    
+    return results
+
+# Example usage
+providers_config = {
+    'CPUExecutionProvider': {},
+    'CUDAExecutionProvider': {'device_id': 0},
+    'TensorrtExecutionProvider': {'device_id': 0, 'trt_fp16_enable': True},
+}
+
+results = compare_providers('model.onnx', input_data, providers_config)
+
+for provider, metrics in results.items():
+    if metrics['success']:
+        print(f"{provider}: {metrics['mean_ms']:.2f} ms (P95: {metrics['p95_ms']:.2f} ms)")
+    else:
+        print(f"{provider}: Failed - {metrics['error']}")
+```
+
+## Best Practices
+
+### 1. Always Use Warm-up Iterations
+
+The first few inferences include initialization overhead:
+
+```python
+# Warm-up (typically 5-10 iterations)
+for _ in range(10):
+    session.run(None, inputs)
+
+# Now measure actual performance
+```
+
+### 2. Measure Multiple Runs
+
+Single measurements can be misleading:
+
+```python
+# Run at least 100 iterations for statistical significance
+latencies = [measure_latency() for _ in range(100)]
+```
+
+### 3. Report Percentiles
+
+Mean latency doesn't tell the full story:
+
+```python
+print(f"P50: {np.percentile(latencies, 50):.2f} ms")
+print(f"P90: {np.percentile(latencies, 90):.2f} ms")
+print(f"P95: {np.percentile(latencies, 95):.2f} ms")
+print(f"P99: {np.percentile(latencies, 99):.2f} ms")
+```
+
+### 4. Control System Resources
+
+```python
+# Fix thread count for reproducibility
+os.environ['OMP_NUM_THREADS'] = '4'
+os.environ['MKL_NUM_THREADS'] = '4'
+
+session_options.intra_op_num_threads = 4
+session_options.inter_op_num_threads = 1
+```
+
+### 5. Use Realistic Input Data
+
+Random data may not reflect real-world performance:
+
+```python
+# Use representative input shapes and values
+input_data = load_real_sample()  # Not random data
+```
+
+## Profiling Integration
+
+```python
+def benchmark_with_profiling(model_path, input_data):
+    """Benchmark with detailed profiling enabled."""
+    session_options = ort.SessionOptions()
+    session_options.enable_profiling = True
+    session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    
+    session = ort.InferenceSession(model_path, session_options)
+    input_name = session.get_inputs()[0].name
+    
+    # Run with profiling
+    for _ in range(100):
+        session.run(None, {input_name: input_data})
+    
+    # Save profile
+    profile_file = session.end_profiling()
+    print(f"Profile saved to: {profile_file}")
+    
+    return profile_file
+```
+
+## See Also
+
+- [Performance Tuning](/performance/tuning)
+- [Threading and Parallelism](/performance/threading)
+- [Memory Optimization](/performance/memory-optimization)

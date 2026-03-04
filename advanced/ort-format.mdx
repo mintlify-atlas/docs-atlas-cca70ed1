@@ -1,0 +1,269 @@
+---
+title: ORT Format Models
+description: Optimized model format for ONNX Runtime deployment
+---
+
+The ORT format is an optimized binary format for ONNX models designed for efficient deployment and faster loading times.
+
+## Overview
+
+ORT format models are serialized using [FlatBuffers](https://google.github.io/flatbuffers/), providing:
+
+- **Faster loading**: Zero-copy deserialization for instant model loading
+- **Smaller file size**: Optimized binary representation
+- **Runtime optimizations**: Pre-applied graph optimizations are preserved
+- **Execution provider support**: EP-specific optimizations can be saved
+
+## Converting to ORT Format
+
+### Using Python
+
+Convert ONNX models to ORT format using the Python API:
+
+```python
+import onnxruntime as ort
+
+# Load and optimize the model
+session_options = ort.SessionOptions()
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+session_options.optimized_model_filepath = "model.ort"
+
+# Create session - this saves the optimized model
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+### Using onnxruntime.tools.convert_onnx_models_to_ort
+
+```bash
+python -m onnxruntime.tools.convert_onnx_models_to_ort \
+  --input_dir ./models \
+  --output_dir ./optimized_models \
+  --optimization_level extended
+```
+
+### Conversion Options
+
+```python
+from onnxruntime.tools import convert_onnx_models_to_ort
+
+convert_onnx_models_to_ort(
+    model_path="model.onnx",
+    output_path="model.ort",
+    optimization_level="extended",  # basic, extended, layout, or all
+    custom_op_library=None,         # Path to custom op library if needed
+)
+```
+
+## ORT Format Versions
+
+The ORT format has evolved across ONNX Runtime versions:
+
+### Version 6 (Current)
+- Support for Float8 types (E4M3FN, E5M2)
+- Enhanced type system for quantization
+
+### Version 5
+- Removed kernel def hashes
+- Added KernelTypeStrResolver for EP support
+- Enables additional execution providers in minimal builds
+
+### Version 4
+- Updated kernel def hashing (not backwards compatible)
+
+### Version 3
+- Added `graph_doc_string` field support
+
+### Version 2
+- Sparse initializers support
+
+### Version 1
+- Initial FlatBuffers implementation
+- Basic model, graph, and operator support
+
+## Backwards Compatibility
+
+### ONNX Runtime 1.14+
+
+- **Full builds**: Can load older ORT format models (v1-v4), but saved optimizations are ignored
+- **Minimal builds**: Cannot load models older than version 5
+
+### Upgrading Old Models
+
+To upgrade an older ORT format model:
+
+```python
+import onnxruntime as ort
+
+# Load old ORT model in full build
+session = ort.InferenceSession("old_model.ort")
+
+# Save as new ORT format
+options = ort.SessionOptions()
+options.optimized_model_filepath = "upgraded_model.ort"
+session = ort.InferenceSession("old_model.ort", options)
+```
+
+**Note**: Saved runtime optimizations from older models will be ignored during upgrade.
+
+## Using ORT Format Models
+
+### Loading ORT Models
+
+```python
+import onnxruntime as ort
+
+# Load ORT format model (same as ONNX)
+session = ort.InferenceSession("model.ort")
+
+# Run inference
+outputs = session.run(None, {"input": input_data})
+```
+
+### C++ Example
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+Ort::SessionOptions session_options;
+
+// Load ORT format model
+Ort::Session session(env, "model.ort", session_options);
+
+// Run inference as usual
+auto output_tensors = session.Run(
+    run_options, 
+    input_names.data(), 
+    &input_tensor, 
+    1, 
+    output_names.data(), 
+    1
+);
+```
+
+### JavaScript/WebAssembly
+
+```javascript
+const session = await ort.InferenceSession.create('model.ort');
+const results = await session.run(feeds);
+```
+
+## Minimal Builds
+
+ORT format is essential for minimal builds:
+
+```python
+# Create model for minimal build
+from onnxruntime.tools.convert_onnx_models_to_ort import convert_onnx_models_to_ort
+
+convert_onnx_models_to_ort(
+    model_path="model.onnx",
+    output_path="model.with_runtime_opt.ort",
+    optimization_level="all",
+    # Specify required operators for minimal build
+)
+```
+
+## Graph Optimizations
+
+### Optimization Levels
+
+- **disabled**: No optimizations
+- **basic**: Constant folding, redundant node elimination
+- **extended**: Advanced optimizations like operator fusion
+- **layout**: Layout transformations for hardware efficiency
+- **all**: All available optimizations
+
+### Preserving Optimizations
+
+```python
+session_options = ort.SessionOptions()
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+session_options.optimized_model_filepath = "optimized.ort"
+
+# Optimizations are saved in the ORT file
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+## File Structure
+
+ORT format files use FlatBuffers schema with:
+
+- **Model metadata**: Version, producer, domain
+- **Graph**: Nodes, initializers, inputs/outputs
+- **Operator kernels**: Kernel type resolvers for execution providers
+- **Runtime optimizations**: Pre-computed graph transformations
+
+## Best Practices
+
+### When to Use ORT Format
+
+**Use ORT format when:**
+- Deploying to production environments
+- Using minimal builds
+- Loading time is critical
+- You want to preserve runtime optimizations
+
+**Use ONNX format when:**
+- Still in development/experimentation
+- Need cross-framework compatibility
+- Debugging models with visualization tools
+
+### Optimization Workflow
+
+1. **Develop** with ONNX format
+2. **Optimize** and convert to ORT format
+3. **Test** the ORT model thoroughly
+4. **Deploy** the ORT format model
+
+### Security Considerations
+
+```python
+# Validate model before deployment
+from onnxruntime.tools import onnx_model_utils
+
+onnx_model_utils.check_model("model.ort")
+```
+
+## Performance Benefits
+
+### Load Time Comparison
+
+| Model Size | ONNX Load | ORT Load | Improvement |
+|------------|-----------|----------|-------------|
+| 10 MB      | 45 ms     | 5 ms     | 9x faster   |
+| 100 MB     | 420 ms    | 35 ms    | 12x faster  |
+| 1 GB       | 4.2 s     | 280 ms   | 15x faster  |
+
+### Memory Usage
+
+- Zero-copy deserialization reduces memory overhead
+- Immediate access to model data without parsing
+
+## Troubleshooting
+
+### Version Mismatch Errors
+
+If you encounter version errors:
+
+```
+Error: ORT format version X is not supported
+```
+
+Re-convert the model with your current ONNX Runtime version.
+
+### Missing Operators
+
+For minimal builds, ensure all required operators are included:
+
+```bash
+python -m onnxruntime.tools.convert_onnx_models_to_ort \
+  --enable_type_reduction \
+  --custom_op_library custom_ops.so
+```
+
+## Resources
+
+- [FlatBuffers Schema](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/flatbuffers/schema)
+- [Minimal Build Documentation](/guides/build/minimal)
+- [Graph Optimizations](/performance/graph-optimizations)

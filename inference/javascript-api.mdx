@@ -1,0 +1,796 @@
+---
+title: JavaScript Inference API
+description: Run ONNX models in web browsers and Node.js with the JavaScript API
+---
+
+# JavaScript Inference API
+
+The ONNX Runtime JavaScript API enables inference in web browsers and Node.js applications. This guide covers both environments with real code examples.
+
+## Installation
+
+### Node.js
+
+```bash
+npm install onnxruntime-node
+
+# For GPU support (CUDA)
+npm install onnxruntime-node-gpu
+```
+
+### Web / Browser
+
+```bash
+npm install onnxruntime-web
+```
+
+### React Native
+
+```bash
+npm install onnxruntime-react-native
+```
+
+## Quick Start
+
+### Node.js
+
+```javascript
+const ort = require('onnxruntime-node');
+
+async function main() {
+  // Create session
+  const session = await ort.InferenceSession.create('model.onnx');
+  
+  // Prepare input
+  const input = new ort.Tensor('float32', 
+    new Float32Array(1 * 3 * 224 * 224),
+    [1, 3, 224, 224]
+  );
+  
+  // Run inference
+  const feeds = { input: input };
+  const results = await session.run(feeds);
+  
+  // Get output
+  const output = results.output;
+  console.log('Output shape:', output.dims);
+  console.log('Output data:', output.data);
+}
+
+main();
+```
+
+### Web / Browser
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+<body>
+  <script>
+    async function runInference() {
+      // Create session
+      const session = await ort.InferenceSession.create('model.onnx');
+      
+      // Prepare input
+      const input = new ort.Tensor('float32',
+        new Float32Array(1 * 3 * 224 * 224),
+        [1, 3, 224, 224]
+      );
+      
+      // Run inference
+      const feeds = { input: input };
+      const results = await session.run(feeds);
+      
+      console.log('Results:', results);
+    }
+    
+    runInference();
+  </script>
+</body>
+</html>
+```
+
+### ES6 Modules
+
+```javascript
+import * as ort from 'onnxruntime-web';
+// or for Node.js:
+// import * as ort from 'onnxruntime-node';
+
+async function runModel() {
+  const session = await ort.InferenceSession.create('model.onnx');
+  const tensor = new ort.Tensor('float32', data, shape);
+  const results = await session.run({ input: tensor });
+  return results;
+}
+```
+
+## InferenceSession
+
+### Creating a Session
+
+**From URL (Web):**
+
+```javascript
+// Load from URL
+const session = await ort.InferenceSession.create(
+  'https://example.com/model.onnx'
+);
+
+// Load from local file (Node.js)
+const session = await ort.InferenceSession.create('./model.onnx');
+```
+
+**From ArrayBuffer:**
+
+```javascript
+// Fetch model as ArrayBuffer
+const response = await fetch('model.onnx');
+const arrayBuffer = await response.arrayBuffer();
+
+const session = await ort.InferenceSession.create(arrayBuffer);
+```
+
+**From Uint8Array:**
+
+```javascript
+const modelData = new Uint8Array(/* model bytes */);
+const session = await ort.InferenceSession.create(modelData);
+```
+
+**With session options:**
+
+```javascript
+const options = {
+  executionProviders: ['webgpu', 'wasm'],
+  graphOptimizationLevel: 'all',
+  intraOpNumThreads: 4,
+  enableCpuMemArena: true,
+  enableMemPattern: true,
+  logSeverityLevel: 2
+};
+
+const session = await ort.InferenceSession.create(
+  'model.onnx',
+  options
+);
+```
+
+### Session Properties
+
+```javascript
+// Get input names
+const inputNames = session.inputNames;
+console.log('Input names:', inputNames);
+
+// Get output names
+const outputNames = session.outputNames;
+console.log('Output names:', outputNames);
+
+// The session object contains metadata about inputs/outputs
+console.log('Session info:', {
+  inputs: inputNames,
+  outputs: outputNames
+});
+```
+
+### Running Inference
+
+**Basic inference:**
+
+```javascript
+// Create input tensor
+const inputTensor = new ort.Tensor(
+  'float32',
+  Float32Array.from([1.0, 2.0, 3.0, 4.0]),
+  [1, 4]
+);
+
+// Create feeds object
+const feeds = {
+  'input': inputTensor
+};
+
+// Run inference
+const results = await session.run(feeds);
+
+// Access output by name
+const output = results['output'];
+console.log('Output data:', output.data);
+console.log('Output shape:', output.dims);
+```
+
+**Multiple inputs:**
+
+```javascript
+const feeds = {
+  'input1': new ort.Tensor('float32', data1, shape1),
+  'input2': new ort.Tensor('float32', data2, shape2)
+};
+
+const results = await session.run(feeds);
+```
+
+**Request specific outputs:**
+
+```javascript
+// Only compute specific outputs
+const feeds = { 'input': inputTensor };
+const fetchesNames = ['output1', 'output2'];
+
+const results = await session.run(feeds, fetchesNames);
+
+const output1 = results.output1;
+const output2 = results.output2;
+```
+
+**With run options:**
+
+```javascript
+const runOptions = {
+  logSeverityLevel: 2,
+  logVerbosityLevel: 0,
+  tag: 'my-run'
+};
+
+const results = await session.run(feeds, runOptions);
+```
+
+## SessionOptions
+
+Configure session behavior:
+
+```javascript
+const sessionOptions = {
+  // Execution providers (in priority order)
+  executionProviders: [
+    'webgpu',    // WebGPU (web only)
+    'webnn',     // WebNN (web only)
+    'wasm'       // WebAssembly (web and Node.js)
+  ],
+  
+  // Graph optimization level
+  graphOptimizationLevel: 'all',
+  // Options: 'disabled', 'basic', 'extended', 'all'
+  
+  // Threading (Node.js only)
+  intraOpNumThreads: 4,
+  interOpNumThreads: 2,
+  
+  // Memory optimization
+  enableCpuMemArena: true,
+  enableMemPattern: true,
+  
+  // Execution mode
+  executionMode: 'sequential',
+  // Options: 'sequential', 'parallel'
+  
+  // Logging
+  logSeverityLevel: 2,  // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
+  logVerbosityLevel: 0,
+  logId: 'MySession',
+  
+  // Extra configurations
+  extra: {
+    session: {
+      disable_prepacking: '0'
+    }
+  }
+};
+
+const session = await ort.InferenceSession.create(
+  'model.onnx',
+  sessionOptions
+);
+```
+
+## Tensor
+
+Create and manipulate tensors:
+
+**Create from typed array:**
+
+```javascript
+// Float32 tensor
+const data = new Float32Array([1.0, 2.0, 3.0, 4.0]);
+const tensor = new ort.Tensor('float32', data, [2, 2]);
+
+// Int32 tensor
+const intData = new Int32Array([1, 2, 3, 4]);
+const intTensor = new ort.Tensor('int32', intData, [2, 2]);
+
+// String tensor
+const strTensor = new ort.Tensor('string', ['hello', 'world'], [2]);
+```
+
+**Create from regular array:**
+
+```javascript
+const data = [1.0, 2.0, 3.0, 4.0];
+const tensor = new ort.Tensor('float32', Float32Array.from(data), [2, 2]);
+```
+
+**Tensor properties:**
+
+```javascript
+console.log('Type:', tensor.type);      // 'float32'
+console.log('Data:', tensor.data);      // TypedArray
+console.log('Shape:', tensor.dims);     // [2, 2]
+console.log('Size:', tensor.size);      // 4
+```
+
+**Common tensor shapes:**
+
+```javascript
+// Scalar
+const scalar = new ort.Tensor('float32', Float32Array.from([1.0]), []);
+
+// Vector
+const vector = new ort.Tensor('float32', new Float32Array(10), [10]);
+
+// Matrix
+const matrix = new ort.Tensor('float32', new Float32Array(100), [10, 10]);
+
+// Image (NCHW format)
+const image = new ort.Tensor(
+  'float32',
+  new Float32Array(1 * 3 * 224 * 224),
+  [1, 3, 224, 224]
+);
+```
+
+## Execution Providers
+
+### Web Execution Providers
+
+**WebGPU (GPU acceleration in browser):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['webgpu']
+});
+```
+
+**WebNN (Neural Network API):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'webnn',
+      deviceType: 'gpu',
+      powerPreference: 'default'
+    }
+  ]
+});
+```
+
+**WebAssembly (CPU):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['wasm']
+});
+```
+
+### Node.js Execution Providers
+
+**CPU:**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['cpu']
+});
+```
+
+**CUDA (with onnxruntime-node-gpu):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'cuda',
+      deviceId: 0
+    }
+  ]
+});
+```
+
+**DirectML (Windows):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['dml']
+});
+```
+
+**CoreML (macOS):**
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['coreml']
+});
+```
+
+## Complete Examples
+
+### Node.js Image Classification
+
+```javascript
+const ort = require('onnxruntime-node');
+const fs = require('fs');
+const { createCanvas, loadImage } = require('canvas');
+
+class ImageClassifier {
+  constructor(modelPath) {
+    this.modelPath = modelPath;
+    this.session = null;
+  }
+  
+  async initialize() {
+    const options = {
+      executionProviders: ['cpu'],
+      graphOptimizationLevel: 'all',
+      intraOpNumThreads: 4
+    };
+    
+    this.session = await ort.InferenceSession.create(
+      this.modelPath,
+      options
+    );
+    
+    console.log('Model loaded:', this.modelPath);
+    console.log('Input names:', this.session.inputNames);
+    console.log('Output names:', this.session.outputNames);
+  }
+  
+  async preprocessImage(imagePath) {
+    // Load image
+    const image = await loadImage(imagePath);
+    const canvas = createCanvas(224, 224);
+    const ctx = canvas.getContext('2d');
+    
+    // Resize to 224x224
+    ctx.drawImage(image, 0, 0, 224, 224);
+    const imageData = ctx.getImageData(0, 0, 224, 224);
+    
+    // Convert to CHW format and normalize
+    const pixels = imageData.data;
+    const input = new Float32Array(1 * 3 * 224 * 224);
+    
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+    
+    for (let i = 0; i < 224 * 224; i++) {
+      const r = pixels[i * 4] / 255;
+      const g = pixels[i * 4 + 1] / 255;
+      const b = pixels[i * 4 + 2] / 255;
+      
+      input[i] = (r - mean[0]) / std[0];
+      input[224 * 224 + i] = (g - mean[1]) / std[1];
+      input[224 * 224 * 2 + i] = (b - mean[2]) / std[2];
+    }
+    
+    return new ort.Tensor('float32', input, [1, 3, 224, 224]);
+  }
+  
+  async classify(imagePath) {
+    const inputTensor = await this.preprocessImage(imagePath);
+    const inputName = this.session.inputNames[0];
+    
+    const feeds = {};
+    feeds[inputName] = inputTensor;
+    
+    const results = await this.session.run(feeds);
+    const output = results[this.session.outputNames[0]];
+    
+    // Get top 5 predictions
+    const predictions = Array.from(output.data);
+    const top5 = predictions
+      .map((score, index) => ({ index, score }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+    
+    return top5;
+  }
+}
+
+// Usage
+async function main() {
+  const classifier = new ImageClassifier('resnet50.onnx');
+  await classifier.initialize();
+  
+  const predictions = await classifier.classify('cat.jpg');
+  
+  console.log('\nTop 5 predictions:');
+  predictions.forEach(pred => {
+    console.log(`  Class ${pred.index}: ${pred.score.toFixed(4)}`);
+  });
+}
+
+main().catch(console.error);
+```
+
+### Web Browser Image Classification
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ONNX Runtime Web Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+</head>
+<body>
+  <h1>Image Classification</h1>
+  <input type="file" id="imageInput" accept="image/*">
+  <canvas id="canvas" width="224" height="224" style="display:none"></canvas>
+  <div id="results"></div>
+  
+  <script>
+    let session = null;
+    
+    // Initialize model
+    async function initModel() {
+      try {
+        session = await ort.InferenceSession.create('resnet50.onnx', {
+          executionProviders: ['webgpu', 'wasm']
+        });
+        console.log('Model loaded successfully');
+      } catch (error) {
+        console.error('Failed to load model:', error);
+      }
+    }
+    
+    // Preprocess image
+    function preprocessImage(imageData) {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      const pixels = imageData.data;
+      const input = new Float32Array(1 * 3 * 224 * 224);
+      
+      const mean = [0.485, 0.456, 0.406];
+      const std = [0.229, 0.224, 0.225];
+      
+      for (let i = 0; i < 224 * 224; i++) {
+        const r = pixels[i * 4] / 255;
+        const g = pixels[i * 4 + 1] / 255;
+        const b = pixels[i * 4 + 2] / 255;
+        
+        input[i] = (r - mean[0]) / std[0];
+        input[224 * 224 + i] = (g - mean[1]) / std[1];
+        input[224 * 224 * 2 + i] = (b - mean[2]) / std[2];
+      }
+      
+      return new ort.Tensor('float32', input, [1, 3, 224, 224]);
+    }
+    
+    // Run inference
+    async function classify(imageElement) {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Draw and resize image
+      ctx.drawImage(imageElement, 0, 0, 224, 224);
+      const imageData = ctx.getImageData(0, 0, 224, 224);
+      
+      // Preprocess
+      const inputTensor = preprocessImage(imageData);
+      
+      // Run inference
+      const feeds = {};
+      feeds[session.inputNames[0]] = inputTensor;
+      
+      const start = Date.now();
+      const results = await session.run(feeds);
+      const elapsed = Date.now() - start;
+      
+      // Get predictions
+      const output = results[session.outputNames[0]];
+      const predictions = Array.from(output.data);
+      
+      // Get top 5
+      const top5 = predictions
+        .map((score, index) => ({ index, score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+      
+      // Display results
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = `<h3>Results (${elapsed}ms):</h3>`;
+      top5.forEach(pred => {
+        resultsDiv.innerHTML += 
+          `<p>Class ${pred.index}: ${pred.score.toFixed(4)}</p>`;
+      });
+    }
+    
+    // Handle file input
+    document.getElementById('imageInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => classify(img);
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    // Initialize on load
+    initModel();
+  </script>
+</body>
+</html>
+```
+
+### TypeScript Example
+
+```typescript
+import * as ort from 'onnxruntime-node';
+
+interface ModelConfig {
+  modelPath: string;
+  executionProviders: string[];
+  options?: ort.InferenceSession.SessionOptions;
+}
+
+class ONNXModel {
+  private session: ort.InferenceSession | null = null;
+  
+  constructor(private config: ModelConfig) {}
+  
+  async initialize(): Promise<void> {
+    this.session = await ort.InferenceSession.create(
+      this.config.modelPath,
+      {
+        executionProviders: this.config.executionProviders,
+        ...this.config.options
+      }
+    );
+  }
+  
+  async run(inputs: Record<string, ort.Tensor>): Promise<ort.InferenceSession.ReturnType> {
+    if (!this.session) {
+      throw new Error('Model not initialized');
+    }
+    return await this.session.run(inputs);
+  }
+  
+  getInputNames(): readonly string[] {
+    if (!this.session) {
+      throw new Error('Model not initialized');
+    }
+    return this.session.inputNames;
+  }
+  
+  getOutputNames(): readonly string[] {
+    if (!this.session) {
+      throw new Error('Model not initialized');
+    }
+    return this.session.outputNames;
+  }
+}
+
+// Usage
+async function main() {
+  const model = new ONNXModel({
+    modelPath: 'model.onnx',
+    executionProviders: ['cpu'],
+    options: {
+      graphOptimizationLevel: 'all',
+      intraOpNumThreads: 4
+    }
+  });
+  
+  await model.initialize();
+  
+  const input = new ort.Tensor(
+    'float32',
+    new Float32Array(1 * 3 * 224 * 224),
+    [1, 3, 224, 224]
+  );
+  
+  const results = await model.run({
+    [model.getInputNames()[0]]: input
+  });
+  
+  console.log('Results:', results);
+}
+
+main();
+```
+
+## Environment Configuration
+
+### Web Environment
+
+```javascript
+// Set WASM file paths (if not using CDN)
+ort.env.wasm.wasmPaths = '/path/to/wasm/files/';
+
+// Enable/disable SIMD
+ort.env.wasm.simd = true;
+
+// Enable/disable multi-threading
+ort.env.wasm.numThreads = 4;
+
+// Set log level
+ort.env.logLevel = 'warning';
+```
+
+### Node.js Environment
+
+```javascript
+// Set global log level
+ort.env.logLevel = 'warning';
+
+// Enable debug mode
+ort.env.debug = true;
+```
+
+## Error Handling
+
+```javascript
+try {
+  const session = await ort.InferenceSession.create('model.onnx');
+  const results = await session.run(feeds);
+} catch (error) {
+  if (error instanceof ort.OnnxRuntimeError) {
+    console.error('ONNX Runtime error:', error.message);
+  } else {
+    console.error('Error:', error);
+  }
+}
+```
+
+## Supported Data Types
+
+```javascript
+'float32'  // Float32Array
+'int32'    // Int32Array
+'int64'    // BigInt64Array
+'uint8'    // Uint8Array
+'bool'     // Uint8Array (0 or 1)
+'string'   // string[]
+```
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Use WebGPU for GPU Acceleration">
+    WebGPU provides the best performance in modern browsers. Always include it as the first execution provider.
+  </Accordion>
+
+  <Accordion title="Enable WASM SIMD">
+    SIMD provides significant speedups. Enable it with `ort.env.wasm.simd = true`.
+  </Accordion>
+
+  <Accordion title="Reuse Sessions">
+    Creating sessions is expensive. Create once and reuse for multiple inferences.
+  </Accordion>
+
+  <Accordion title="Pre-allocate Tensors">
+    Reuse typed arrays for inputs when possible to reduce memory allocation overhead.
+  </Accordion>
+
+  <Accordion title="Optimize Graph">
+    Set `graphOptimizationLevel: 'all'` for maximum optimization.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Model Optimization" icon="gauge-high" href="/inference/model-optimization">
+    Optimize models for web and Node.js
+  </Card>
+  
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers/overview">
+    Configure hardware acceleration
+  </Card>
+</CardGroup>

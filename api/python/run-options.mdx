@@ -1,0 +1,198 @@
+---
+title: RunOptions
+description: Configuration options for individual inference runs
+---
+
+## RunOptions
+
+The `RunOptions` class allows you to configure options for individual calls to `InferenceSession.run()`. Unlike SessionOptions which configure the entire session, RunOptions apply to a single inference execution.
+
+### Constructor
+
+```python
+RunOptions()
+```
+
+Creates a new RunOptions object with default settings.
+
+### Properties
+
+<ParamField path="log_severity_level" type="int">
+  Logging severity level for this run (0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal). Default is 2.
+</ParamField>
+
+<ParamField path="log_verbosity_level" type="int">
+  VLOG level for verbose logging during this run. Default is 0.
+</ParamField>
+
+<ParamField path="run_tag" type="str">
+  Tag to identify this particular run in profiling and logs. Useful for debugging.
+</ParamField>
+
+<ParamField path="terminate" type="bool">
+  Set to True to terminate all pending run() calls. Default is False.
+</ParamField>
+
+<ParamField path="only_execute_path_to_fetches" type="bool">
+  Only execute the subgraph that computes the requested outputs. Can improve performance when requesting a subset of outputs. Default is False.
+</ParamField>
+
+### Methods
+
+#### add_run_config_entry()
+
+Add a custom configuration entry for this run.
+
+```python
+add_run_config_entry(
+    key: str,
+    value: str
+)
+```
+
+<ParamField path="key" type="str" required>
+  Configuration key.
+</ParamField>
+
+<ParamField path="value" type="str" required>
+  Configuration value.
+</ParamField>
+
+**Common Configuration Keys:**
+
+- `disable_synchronize_execution_providers` - Skip EP synchronization
+- `enable_cuda_graph` - Enable CUDA graphs for this run
+- `memory.enable_memory_arena_shrinkage` - Allow memory arena to shrink
+
+### Example Usage
+
+#### Basic Usage
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+sess = ort.InferenceSession("model.onnx")
+
+# Create run options
+run_options = ort.RunOptions()
+run_options.log_severity_level = 1  # Show info logs
+run_options.run_tag = "inference_batch_1"
+
+# Run with options
+inputs = {"input": np.random.randn(1, 3, 224, 224).astype(np.float32)}
+outputs = sess.run(None, inputs, run_options=run_options)
+```
+
+#### Partial Graph Execution
+
+```python
+# Model has multiple outputs, but we only need one
+run_options = ort.RunOptions()
+run_options.only_execute_path_to_fetches = True
+
+# Only compute the required output path
+outputs = sess.run(["specific_output"], inputs, run_options=run_options)
+```
+
+#### Profiling Individual Runs
+
+```python
+import onnxruntime as ort
+
+# Enable profiling in session
+sess_options = ort.SessionOptions()
+sess_options.enable_profiling = True
+sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
+
+# Tag different runs for analysis
+for i in range(10):
+    run_options = ort.RunOptions()
+    run_options.run_tag = f"warmup_{i}" if i < 3 else f"benchmark_{i}"
+    
+    outputs = sess.run(None, inputs, run_options=run_options)
+
+profile_file = sess.end_profiling()
+print(f"Profile saved to {profile_file}")
+```
+
+#### Cancellation
+
+```python
+import threading
+import time
+
+sess = ort.InferenceSession("large_model.onnx")
+run_options = ort.RunOptions()
+
+def run_inference():
+    try:
+        outputs = sess.run(None, inputs, run_options=run_options)
+        print("Inference completed")
+    except Exception as e:
+        print(f"Inference terminated: {e}")
+
+# Start inference in background
+thread = threading.Thread(target=run_inference)
+thread.start()
+
+# Terminate after 1 second
+time.sleep(1)
+run_options.terminate = True
+thread.join()
+```
+
+#### CUDA Graph Optimization
+
+```python
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider"]
+)
+
+# Enable CUDA graphs for faster GPU execution
+run_options = ort.RunOptions()
+run_options.add_run_config_entry("enable_cuda_graph", "1")
+
+# First run captures the graph (slower)
+outputs = sess.run(None, inputs, run_options=run_options)
+
+# Subsequent runs replay the graph (faster)
+for _ in range(100):
+    outputs = sess.run(None, inputs, run_options=run_options)
+```
+
+#### Custom Run Configuration
+
+```python
+run_options = ort.RunOptions()
+
+# Disable EP synchronization for maximum performance
+run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
+
+# Enable memory arena shrinkage
+run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "1")
+
+outputs = sess.run(None, inputs, run_options=run_options)
+```
+
+### Performance Optimization
+
+```python
+# For maximum throughput with minimal latency tracking
+run_options = ort.RunOptions()
+run_options.only_execute_path_to_fetches = True
+run_options.log_severity_level = 3  # Only errors
+
+# For detailed debugging
+run_options = ort.RunOptions()
+run_options.log_severity_level = 0  # Verbose
+run_options.log_verbosity_level = 1
+run_options.run_tag = "debug_run"
+```
+
+### Related APIs
+
+- [InferenceSession](/api/python/inference-session) - Run inference with options
+- [SessionOptions](/api/python/session-options) - Session-level configuration
+- [IOBinding](/api/python/io-binding) - Zero-copy GPU inference

@@ -1,80 +1,808 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with ONNX Runtime in minutes. Learn how to load models, prepare inputs, run inference, and process outputs across multiple programming languages.
 ---
 
-## Get started in three steps
+This guide walks you through the essential steps to run inference with ONNX Runtime. We'll cover loading a model, preparing inputs, running inference, and processing outputs.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- ONNX Runtime installed ([Installation Guide](/installation))
+- An ONNX model file (`.onnx`)
+- Basic familiarity with your programming language of choice
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Don't have an ONNX model? You can export models from PyTorch, TensorFlow, scikit-learn, and other frameworks. See [Model Conversion](https://onnxruntime.ai/docs/tutorials/export-models.html) for details.
 </Note>
+
+## Basic Workflow
+
+The typical ONNX Runtime inference workflow consists of these steps:
+
+<Steps>
+  <Step title="Create an InferenceSession">
+    Load your ONNX model and create a session object.
+  </Step>
+  
+  <Step title="Prepare Input Data">
+    Format your input data as tensors matching the model's input specifications.
+  </Step>
+  
+  <Step title="Run Inference">
+    Execute the model with your input data.
+  </Step>
+  
+  <Step title="Process Outputs">
+    Extract and use the inference results.
+  </Step>
+</Steps>
+
+## Python
+
+Python is the most popular language for machine learning and provides the simplest API.
+
+### Complete Example
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# 1. Create an InferenceSession
+session = ort.InferenceSession("model.onnx")
+
+# Optional: Check model metadata
+print("Model inputs:")
+for input in session.get_inputs():
+    print(f"  Name: {input.name}, Shape: {input.shape}, Type: {input.type}")
+
+print("\nModel outputs:")
+for output in session.get_outputs():
+    print(f"  Name: {output.name}, Shape: {output.shape}, Type: {output.type}")
+
+# 2. Prepare input data
+# Create sample input matching the model's expected shape
+input_name = session.get_inputs()[0].name
+input_shape = session.get_inputs()[0].shape
+input_data = np.random.randn(*[dim if isinstance(dim, int) else 1 
+                                for dim in input_shape]).astype(np.float32)
+
+# 3. Run inference
+outputs = session.run(None, {input_name: input_data})
+
+# 4. Process outputs
+print(f"\nOutput shape: {outputs[0].shape}")
+print(f"Output data (first 5 elements): {outputs[0].flatten()[:5]}")
+```
+
+### Using Execution Providers
+
+Accelerate inference with GPU or other hardware:
+
+```python
+import onnxruntime as ort
+
+# Check available providers
+print("Available providers:", ort.get_available_providers())
+
+# CPU (default)
+session = ort.InferenceSession("model.onnx")
+
+# CUDA GPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+# TensorRT
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+# CoreML (macOS)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CoreMLExecutionProvider', 'CPUExecutionProvider']
+)
+
+# DirectML (Windows)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['DmlExecutionProvider', 'CPUExecutionProvider']
+)
+```
+
+### Session Options
+
+Customize session behavior for better performance:
+
+```python
+import onnxruntime as ort
+
+# Create session options
+sess_options = ort.SessionOptions()
+
+# Set graph optimization level
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+# Set number of threads
+sess_options.intra_op_num_threads = 4
+sess_options.inter_op_num_threads = 4
+
+# Enable profiling
+sess_options.enable_profiling = True
+
+# Create session with options
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=['CPUExecutionProvider']
+)
+
+# Run inference
+results = session.run(None, {"input": input_data})
+
+# Get profiling results
+profile_file = session.end_profiling()
+print(f"Profiling data saved to: {profile_file}")
+```
+
+### IO Binding (Advanced)
+
+For maximum performance with GPU inference:
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession("model.onnx", providers=['CUDAExecutionProvider'])
+
+# Create IO binding
+io_binding = session.io_binding()
+
+# Prepare input
+input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+input_name = session.get_inputs()[0].name
+
+# Bind input to GPU
+io_binding.bind_cpu_input(input_name, input_data)
+
+# Bind output to GPU
+output_name = session.get_outputs()[0].name
+io_binding.bind_output(output_name)
+
+# Run with IO binding
+session.run_with_iobinding(io_binding)
+
+# Get results
+outputs = io_binding.copy_outputs_to_cpu()
+print(f"Output: {outputs[0].shape}")
+```
+
+## C++
+
+C++ provides the lowest latency and is ideal for production deployments.
+
+### Complete Example
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+#include <iostream>
+#include <vector>
+#include <array>
+
+int main() {
+    // 1. Create environment
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "onnxruntime_example");
+    
+    // 2. Create session options
+    Ort::SessionOptions session_options;
+    session_options.SetIntraOpNumThreads(4);
+    session_options.SetGraphOptimizationLevel(
+        GraphOptimizationLevel::ORT_ENABLE_ALL);
+    
+    // 3. Create session and load model
+    const char* model_path = "model.onnx";
+    Ort::Session session(env, model_path, session_options);
+    
+    // 4. Get input/output information
+    Ort::AllocatorWithDefaultOptions allocator;
+    
+    size_t num_inputs = session.GetInputCount();
+    size_t num_outputs = session.GetOutputCount();
+    
+    std::cout << "Model has " << num_inputs << " inputs and " 
+              << num_outputs << " outputs\\n";
+    
+    // Get input name
+    auto input_name_ptr = session.GetInputNameAllocated(0, allocator);
+    std::string input_name = input_name_ptr.get();
+    std::cout << "Input name: " << input_name << "\\n";
+    
+    // Get output name
+    auto output_name_ptr = session.GetOutputNameAllocated(0, allocator);
+    std::string output_name = output_name_ptr.get();
+    std::cout << "Output name: " << output_name << "\\n";
+    
+    // 5. Prepare input tensor
+    const std::array<int64_t, 4> input_shape = {1, 3, 224, 224};
+    const size_t input_size = 1 * 3 * 224 * 224;
+    std::vector<float> input_data(input_size, 1.0f);  // Fill with 1.0
+    
+    auto memory_info = Ort::MemoryInfo::CreateCpu(
+        OrtArenaAllocator, OrtMemTypeDefault);
+    
+    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+        memory_info, 
+        input_data.data(), 
+        input_size,
+        input_shape.data(), 
+        input_shape.size()
+    );
+    
+    // Verify tensor is valid
+    if (!input_tensor.IsTensor()) {
+        std::cerr << "Failed to create input tensor\\n";
+        return 1;
+    }
+    
+    // 6. Run inference
+    const char* input_names[] = {input_name.c_str()};
+    const char* output_names[] = {output_name.c_str()};
+    
+    Ort::RunOptions run_options;
+    auto output_tensors = session.Run(
+        run_options,
+        input_names, 
+        &input_tensor, 
+        1,  // number of inputs
+        output_names, 
+        1   // number of outputs
+    );
+    
+    // 7. Process outputs
+    if (!output_tensors.empty() && output_tensors[0].IsTensor()) {
+        const float* output_data = output_tensors[0].GetTensorData<float>();
+        auto type_info = output_tensors[0].GetTensorTypeAndShapeInfo();
+        size_t output_count = type_info.GetElementCount();
+        
+        std::cout << "Output tensor has " << output_count << " elements\\n";
+        std::cout << "First 5 elements: ";
+        for (size_t i = 0; i < std::min(size_t(5), output_count); ++i) {
+            std::cout << output_data[i] << " ";
+        }
+        std::cout << "\\n";
+    }
+    
+    return 0;
+}
+```
+
+### Using CUDA Execution Provider
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+int main() {
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "cuda_example");
+    Ort::SessionOptions session_options;
+    
+    // Add CUDA execution provider
+    OrtCUDAProviderOptions cuda_options;
+    cuda_options.device_id = 0;
+    cuda_options.arena_extend_strategy = 0;
+    cuda_options.gpu_mem_limit = 2ULL * 1024 * 1024 * 1024;  // 2GB
+    cuda_options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
+    cuda_options.do_copy_in_default_stream = 1;
+    
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
+    
+    // Create session
+    Ort::Session session(env, "model.onnx", session_options);
+    
+    // ... rest of inference code
+    
+    return 0;
+}
+```
+
+## C#
+
+C# provides a clean, type-safe API for .NET applications.
+
+### Complete Example
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
+using System.Linq;
+
+class Program
+{
+    static void Main()
+    {
+        // 1. Create session options
+        var sessionOptions = new SessionOptions
+        {
+            LogId = "MyInference",
+            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL
+        };
+        
+        // 2. Create inference session
+        using var session = new InferenceSession("model.onnx", sessionOptions);
+        
+        // 3. Get model metadata
+        Console.WriteLine("Model Inputs:");
+        foreach (var input in session.InputMetadata)
+        {
+            Console.WriteLine($"  Name: {input.Key}");
+            Console.WriteLine($"  Shape: [{string.Join(",", input.Value.Dimensions)}]");
+            Console.WriteLine($"  Type: {input.Value.ElementType}");
+        }
+        
+        Console.WriteLine("\\nModel Outputs:");
+        foreach (var output in session.OutputMetadata)
+        {
+            Console.WriteLine($"  Name: {output.Key}");
+            Console.WriteLine($"  Shape: [{string.Join(",", output.Value.Dimensions)}]");
+            Console.WriteLine($"  Type: {output.Value.ElementType}");
+        }
+        
+        // 4. Prepare input data
+        var inputName = session.InputMetadata.Keys.First();
+        var inputMeta = session.InputMetadata[inputName];
+        var inputShape = inputMeta.Dimensions.Select(d => d == -1 ? 1 : d).ToArray();
+        
+        // Create tensor with sample data
+        var inputData = new DenseTensor<float>(inputShape);
+        for (int i = 0; i < inputData.Length; i++)
+        {
+            inputData.SetValue(i, (float)i);
+        }
+        
+        // Create OrtValue from tensor
+        using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(
+            inputData.Buffer, 
+            inputShape.Select(d => (long)d).ToArray()
+        );
+        
+        // 5. Run inference
+        var inputs = new Dictionary<string, OrtValue> { { inputName, inputOrtValue } };
+        
+        using var results = session.Run(null, inputs, session.OutputNames);
+        
+        // 6. Process outputs
+        var outputName = session.OutputNames[0];
+        var outputTensor = results[0];
+        
+        // Access output data
+        var outputSpan = outputTensor.GetTensorDataAsSpan<float>();
+        Console.WriteLine($"\\nOutput shape: [{string.Join(",", outputTensor.GetTensorTypeAndShape().Shape)}]");
+        Console.WriteLine($"First 5 elements: {string.Join(", ", outputSpan.Slice(0, Math.Min(5, outputSpan.Length)).ToArray())}");
+    }
+}
+```
+
+### Using GPU Execution Providers
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+// CUDA
+var cudaOptions = new SessionOptions();
+cudaOptions.AppendExecutionProvider_CUDA(0);  // Device ID
+var cudaSession = new InferenceSession("model.onnx", cudaOptions);
+
+// DirectML (Windows)
+var dmlOptions = new SessionOptions();
+dmlOptions.AppendExecutionProvider_DML(0);  // Device ID
+var dmlSession = new InferenceSession("model.onnx", dmlOptions);
+
+// TensorRT
+var tensorRtOptions = new SessionOptions();
+tensorRtOptions.AppendExecutionProvider_Tensorrt(0);
+var tensorRtSession = new InferenceSession("model.onnx", tensorRtOptions);
+```
+
+## Java
+
+Java provides a robust API for enterprise applications.
+
+### Complete Example
+
+```java
+import ai.onnxruntime.*;
+import java.nio.FloatBuffer;
+import java.util.HashMap;
+import java.util.Map;
+
+public class InferenceExample {
+    public static void main(String[] args) throws OrtException {
+        // 1. Create environment
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        System.out.println("ONNX Runtime version: " + env.getVersion());
+        
+        // 2. Create session options
+        OrtSession.SessionOptions sessionOptions = new OrtSession.SessionOptions();
+        sessionOptions.setIntraOpNumThreads(4);
+        sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        
+        // 3. Create session
+        String modelPath = "model.onnx";
+        OrtSession session = env.createSession(modelPath, sessionOptions);
+        
+        // 4. Get input/output information
+        System.out.println("Model inputs: " + session.getNumInputs());
+        System.out.println("Model outputs: " + session.getNumOutputs());
+        
+        Map<String, NodeInfo> inputInfo = session.getInputInfo();
+        for (Map.Entry<String, NodeInfo> entry : inputInfo.entrySet()) {
+            System.out.println("Input name: " + entry.getKey());
+            System.out.println("Input info: " + entry.getValue().getInfo());
+        }
+        
+        // 5. Prepare input data
+        String inputName = session.getInputNames().iterator().next();
+        long[] inputShape = {1, 3, 224, 224};
+        int inputSize = 1 * 3 * 224 * 224;
+        
+        // Create input tensor
+        float[] inputData = new float[inputSize];
+        for (int i = 0; i < inputSize; i++) {
+            inputData[i] = 1.0f;
+        }
+        
+        OnnxTensor inputTensor = OnnxTensor.createTensor(
+            env, 
+            FloatBuffer.wrap(inputData), 
+            inputShape
+        );
+        
+        // 6. Run inference
+        Map<String, OnnxTensor> inputs = new HashMap<>();
+        inputs.put(inputName, inputTensor);
+        
+        OrtSession.Result results = session.run(inputs);
+        
+        // 7. Process outputs
+        String outputName = session.getOutputNames().iterator().next();
+        OnnxValue outputValue = results.get(outputName).get();
+        
+        if (outputValue instanceof OnnxTensor) {
+            OnnxTensor outputTensor = (OnnxTensor) outputValue;
+            float[] outputData = outputTensor.getFloatBuffer().array();
+            
+            System.out.println("\\nOutput shape: " + 
+                java.util.Arrays.toString(outputTensor.getInfo().getShape()));
+            System.out.print("First 5 elements: ");
+            for (int i = 0; i < Math.min(5, outputData.length); i++) {
+                System.out.print(outputData[i] + " ");
+            }
+            System.out.println();
+        }
+        
+        // 8. Clean up
+        inputTensor.close();
+        results.close();
+        session.close();
+        sessionOptions.close();
+    }
+}
+```
+
+### Using CUDA Execution Provider
+
+```java
+import ai.onnxruntime.*;
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+
+// Add CUDA provider
+options.addCUDA(0);  // Device ID 0
+
+OrtSession session = env.createSession("model.onnx", options);
+
+// ... rest of inference code
+```
+
+## JavaScript
+
+JavaScript enables ML inference in both Node.js and web browsers.
+
+<Tabs>
+  <Tab title="Node.js">
+    ### Complete Example
+
+    ```javascript
+    const ort = require('onnxruntime-node');
+
+    async function runInference() {
+        try {
+            // 1. Create session
+            const session = await ort.InferenceSession.create('model.onnx');
+            
+            // 2. Check model info
+            console.log('Model inputs:');
+            session.inputNames.forEach((name, index) => {
+                console.log(`  ${index}: ${name}`);
+            });
+            
+            console.log('Model outputs:');
+            session.outputNames.forEach((name, index) => {
+                console.log(`  ${index}: ${name}`);
+            });
+            
+            // 3. Prepare input data
+            const inputName = session.inputNames[0];
+            const inputData = Float32Array.from(
+                {length: 1 * 3 * 224 * 224}, 
+                () => Math.random()
+            );
+            const inputTensor = new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+            
+            // 4. Run inference
+            const feeds = {[inputName]: inputTensor};
+            const results = await session.run(feeds);
+            
+            // 5. Process outputs
+            const outputName = session.outputNames[0];
+            const outputTensor = results[outputName];
+            
+            console.log('\\nOutput shape:', outputTensor.dims);
+            console.log('Output type:', outputTensor.type);
+            console.log('First 5 elements:', 
+                Array.from(outputTensor.data.slice(0, 5)));
+            
+        } catch (error) {
+            console.error('Inference failed:', error);
+        }
+    }
+
+    runInference();
+    ```
+
+    ### Using Execution Providers
+
+    ```javascript
+    const ort = require('onnxruntime-node');
+
+    // CUDA (Linux)
+    const cudaSession = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['cuda']
+    });
+
+    // DirectML (Windows)
+    const dmlSession = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['dml']
+    });
+
+    // CoreML (macOS)
+    const coremlSession = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['coreml']
+    });
+    ```
+  </Tab>
+
+  <Tab title="Browser (Web)">
+    ### Complete Example
+
+    ```javascript
+    // Import from CDN or npm package
+    import * as ort from 'onnxruntime-web';
+
+    async function runInference() {
+        try {
+            // 1. Create session
+            const session = await ort.InferenceSession.create('model.onnx');
+            
+            // 2. Prepare input data
+            const inputData = new Float32Array(1 * 3 * 224 * 224);
+            for (let i = 0; i < inputData.length; i++) {
+                inputData[i] = Math.random();
+            }
+            
+            const inputTensor = new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+            
+            // 3. Run inference
+            const feeds = {[session.inputNames[0]]: inputTensor};
+            const results = await session.run(feeds);
+            
+            // 4. Process outputs
+            const outputName = session.outputNames[0];
+            const outputTensor = results[outputName];
+            
+            console.log('Output shape:', outputTensor.dims);
+            console.log('First 5 elements:', 
+                Array.from(outputTensor.data.slice(0, 5)));
+            
+        } catch (error) {
+            console.error('Inference failed:', error);
+        }
+    }
+
+    runInference();
+    ```
+
+    ### Using WebGL Backend
+
+    ```javascript
+    import * as ort from 'onnxruntime-web';
+
+    // Set WebGL as execution provider
+    ort.env.wasm.numThreads = 4;
+    ort.env.wasm.simd = true;
+
+    const session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['webgl']
+    });
+    ```
+
+    ### Using WebGPU Backend
+
+    ```javascript
+    import * as ort from 'onnxruntime-web';
+
+    // Check WebGPU support
+    if (!navigator.gpu) {
+        console.error('WebGPU not supported');
+        return;
+    }
+
+    const session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['webgpu']
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Common Patterns
+
+### Batch Inference
+
+Process multiple inputs in a single inference call:
+
+<CodeGroup>
+```python Python
+import numpy as np
+import onnxruntime as ort
+
+session = ort.InferenceSession("model.onnx")
+
+# Batch of 8 images
+batch_size = 8
+input_data = np.random.randn(batch_size, 3, 224, 224).astype(np.float32)
+
+# Run inference on batch
+outputs = session.run(None, {"input": input_data})
+print(f"Batch output shape: {outputs[0].shape}")  # (8, num_classes)
+```
+
+```cpp C++
+// C++ batch inference
+const std::array<int64_t, 4> input_shape = {8, 3, 224, 224};  // Batch of 8
+const size_t input_size = 8 * 3 * 224 * 224;
+std::vector<float> input_data(input_size);
+
+auto input_tensor = Ort::Value::CreateTensor<float>(
+    memory_info, input_data.data(), input_size,
+    input_shape.data(), input_shape.size()
+);
+
+auto outputs = session.Run(run_options, input_names, &input_tensor, 1, output_names, 1);
+```
+</CodeGroup>
+
+### Dynamic Shapes
+
+Handle models with dynamic input shapes:
+
+<CodeGroup>
+```python Python
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession("model.onnx")
+
+# First inference with shape (1, 3, 224, 224)
+input1 = np.random.randn(1, 3, 224, 224).astype(np.float32)
+output1 = session.run(None, {"input": input1})
+
+# Second inference with shape (4, 3, 224, 224)
+input2 = np.random.randn(4, 3, 224, 224).astype(np.float32)
+output2 = session.run(None, {"input": input2})
+```
+
+```javascript JavaScript
+const ort = require('onnxruntime-node');
+
+const session = await ort.InferenceSession.create('model.onnx');
+
+// Variable batch size
+const batchSize = 4;
+const data = new Float32Array(batchSize * 3 * 224 * 224);
+const tensor = new ort.Tensor('float32', data, [batchSize, 3, 224, 224]);
+
+const results = await session.run({input: tensor});
+```
+</CodeGroup>
+
+### Error Handling
+
+Properly handle errors during inference:
+
+<CodeGroup>
+```python Python
+import onnxruntime as ort
+
+try:
+    session = ort.InferenceSession("model.onnx")
+    outputs = session.run(None, {"input": input_data})
+except ort.OrtException as e:
+    print(f"ONNX Runtime error: {e}")
+except Exception as e:
+    print(f"Unexpected error: {e}")
+```
+
+```cpp C++
+try {
+    Ort::Session session(env, model_path, session_options);
+    auto outputs = session.Run(run_options, input_names, &input_tensor, 1, 
+                               output_names, 1);
+} catch (const Ort::Exception& e) {
+    std::cerr << "ONNX Runtime error: " << e.what() << std::endl;
+} catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+}
+```
+
+```csharp C#
+try
+{
+    using var session = new InferenceSession("model.onnx");
+    using var results = session.Run(null, inputs, session.OutputNames);
+}
+catch (OnnxRuntimeException ex)
+{
+    Console.WriteLine($"ONNX Runtime error: {ex.Message}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+}
+```
+
+```java Java
+try {
+    OrtSession session = env.createSession("model.onnx", options);
+    OrtSession.Result results = session.run(inputs);
+    // ... process results
+    results.close();
+} catch (OrtException e) {
+    System.err.println("ONNX Runtime error: " + e.getMessage());
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Learn how to leverage GPU, NPU, and other hardware accelerators
+  </Card>
+  
+  <Card title="Performance Tuning" icon="gauge-high" href="/performance">
+    Optimize inference speed and memory usage
+  </Card>
+  
+  <Card title="Model Optimization" icon="wrench" href="/optimization">
+    Convert and optimize models for production
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>

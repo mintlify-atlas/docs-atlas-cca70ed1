@@ -1,0 +1,559 @@
+---
+title: WebGPU Execution Provider
+description: Enable GPU-accelerated inference in web browsers using the WebGPU Execution Provider
+---
+
+# WebGPU Execution Provider
+
+The WebGPU Execution Provider enables GPU-accelerated inference in web browsers using the WebGPU API, providing high-performance machine learning inference directly in the browser.
+
+## When to Use WebGPU EP
+
+Use the WebGPU Execution Provider when:
+
+- You're building web applications with ML inference
+- You need GPU acceleration in the browser
+- You want better performance than WebAssembly CPU execution
+- Your users have modern browsers with WebGPU support
+- You're deploying client-side ML applications
+- You want to reduce server costs by running inference on client devices
+
+## Key Features
+
+- **GPU Acceleration**: Leverage user's GPU for fast inference
+- **Cross-Platform**: Works on Windows, macOS, Linux, ChromeOS
+- **Modern API**: Based on next-generation graphics API
+- **Better Performance**: 5-10x faster than WebAssembly CPU
+- **Privacy-Friendly**: Inference runs locally, no data sent to server
+- **Progressive Enhancement**: Fallback to CPU when GPU unavailable
+
+## Prerequisites
+
+### Browser Support
+
+WebGPU is supported in:
+
+**Desktop**:
+- Chrome/Edge 113+ (Windows, macOS, Linux, ChromeOS)
+- Safari 18+ (macOS)
+- Firefox (experimental, enable via flag)
+
+**Mobile**:
+- Chrome Android 113+ (limited support)
+- Safari iOS 18+ (limited support)
+
+### Checking Browser Support
+
+```javascript
+if ('gpu' in navigator) {
+    console.log('WebGPU is supported');
+} else {
+    console.log('WebGPU is not supported, fallback to CPU');
+}
+```
+
+### Development Environment
+
+- **Node.js**: 16+ (for building)
+- **ONNX Runtime Web**: Latest version
+- **Modern bundler**: Webpack, Vite, or Rollup
+
+## Installation
+
+### NPM Package
+
+```bash
+# Install ONNX Runtime Web
+npm install onnxruntime-web
+```
+
+### CDN (Development)
+
+```html
+<!-- Include ONNX Runtime Web from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@latest/dist/ort.min.js"></script>
+```
+
+### Building Your App
+
+```bash
+# Create a new project
+npm create vite@latest my-ml-app -- --template vanilla-ts
+cd my-ml-app
+npm install onnxruntime-web
+```
+
+## Basic Usage
+
+### JavaScript/TypeScript
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+async function runInference() {
+    // Set execution provider to WebGPU
+    ort.env.wasm.numThreads = 1;
+    
+    // Create session with WebGPU provider
+    const session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['webgpu'],
+    });
+    
+    // Prepare input
+    const input = new Float32Array(1 * 3 * 224 * 224);
+    // Fill input with data...
+    
+    const tensor = new ort.Tensor('float32', input, [1, 3, 224, 224]);
+    
+    // Run inference
+    const results = await session.run({ input: tensor });
+    
+    // Get output
+    const output = results.output.data;
+    console.log('Output:', output);
+}
+
+runInference();
+```
+
+### With Fallback
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+async function createSession(modelPath) {
+    try {
+        // Try WebGPU first
+        const session = await ort.InferenceSession.create(modelPath, {
+            executionProviders: ['webgpu'],
+        });
+        console.log('Using WebGPU');
+        return session;
+    } catch (e) {
+        console.warn('WebGPU not available, falling back to WASM');
+        // Fallback to WebAssembly
+        const session = await ort.InferenceSession.create(modelPath, {
+            executionProviders: ['wasm'],
+        });
+        return session;
+    }
+}
+```
+
+### React Example
+
+```typescript
+import { useEffect, useState } from 'react';
+import * as ort from 'onnxruntime-web';
+
+function MLComponent() {
+    const [session, setSession] = useState<ort.InferenceSession | null>(null);
+    const [result, setResult] = useState<Float32Array | null>(null);
+    
+    useEffect(() => {
+        async function loadModel() {
+            const sess = await ort.InferenceSession.create('/model.onnx', {
+                executionProviders: ['webgpu'],
+            });
+            setSession(sess);
+        }
+        loadModel();
+    }, []);
+    
+    async function runModel(inputData: Float32Array) {
+        if (!session) return;
+        
+        const tensor = new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+        const results = await session.run({ input: tensor });
+        setResult(results.output.data as Float32Array);
+    }
+    
+    return (
+        <div>
+            <button onClick={() => runModel(generateInput())}>
+                Run Inference
+            </button>
+            {result && <div>Result: {result[0]}</div>}
+        </div>
+    );
+}
+```
+
+## Configuration Options
+
+### Session Options
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+const session = await ort.InferenceSession.create('model.onnx', {
+    // Execution providers (in order of preference)
+    executionProviders: ['webgpu', 'wasm'],
+    
+    // Graph optimizations
+    graphOptimizationLevel: 'all',
+    
+    // Enable profiling
+    enableProfiling: false,
+    
+    // Memory management
+    enableMemPattern: true,
+    enableCpuMemArena: true,
+    
+    // Logging
+    logSeverityLevel: 2,  // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
+});
+```
+
+### WebGPU-Specific Options
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+// Configure WebGPU adapter preferences
+const session = await ort.InferenceSession.create('model.onnx', {
+    executionProviders: [
+        {
+            name: 'webgpu',
+            deviceType: 'gpu',  // 'gpu' or 'cpu'
+            powerPreference: 'high-performance',  // 'high-performance' or 'low-power'
+        },
+    ],
+});
+```
+
+### Environment Configuration
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+// Configure global settings
+ort.env.wasm.numThreads = 4;  // Number of threads for WASM (fallback)
+ort.env.wasm.simd = true;     // Enable SIMD
+ort.env.wasm.proxy = false;   // Use worker proxy
+ort.env.logLevel = 'warning';  // Log level
+
+// Set WebAssembly paths (if needed)
+ort.env.wasm.wasmPaths = '/path/to/wasm/files/';
+```
+
+## Performance Optimization
+
+### Model Loading
+
+```javascript
+// Load model once and reuse
+let cachedSession = null;
+
+async function getSession() {
+    if (!cachedSession) {
+        cachedSession = await ort.InferenceSession.create('model.onnx', {
+            executionProviders: ['webgpu'],
+        });
+    }
+    return cachedSession;
+}
+```
+
+### Batch Processing
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+async function processBatch(session, inputs) {
+    // Process multiple inputs in a single batch
+    const batchSize = inputs.length;
+    const inputData = new Float32Array(batchSize * 3 * 224 * 224);
+    
+    // Fill batch
+    inputs.forEach((input, idx) => {
+        inputData.set(input, idx * 3 * 224 * 224);
+    });
+    
+    const tensor = new ort.Tensor('float32', inputData, [batchSize, 3, 224, 224]);
+    const results = await session.run({ input: tensor });
+    
+    return results.output.data;
+}
+```
+
+### Warm-up
+
+```javascript
+// Run a dummy inference to warm up the GPU
+async function warmup(session) {
+    const dummyInput = new Float32Array(1 * 3 * 224 * 224);
+    const tensor = new ort.Tensor('float32', dummyInput, [1, 3, 224, 224]);
+    await session.run({ input: tensor });
+    console.log('GPU warmed up');
+}
+
+const session = await ort.InferenceSession.create('model.onnx', {
+    executionProviders: ['webgpu'],
+});
+await warmup(session);
+```
+
+### Tensor Management
+
+```javascript
+// Reuse tensors to reduce memory allocation
+let inputTensor = null;
+
+async function runInference(session, data) {
+    if (!inputTensor) {
+        inputTensor = new ort.Tensor('float32', data, [1, 3, 224, 224]);
+    } else {
+        // Update tensor data
+        inputTensor.data.set(data);
+    }
+    
+    const results = await session.run({ input: inputTensor });
+    return results.output.data;
+}
+```
+
+## Deployment
+
+### Webpack Configuration
+
+```javascript
+// webpack.config.js
+module.exports = {
+    // ... other config ...
+    
+    module: {
+        rules: [
+            {
+                test: /\.onnx$/,
+                type: 'asset/resource',
+            },
+        ],
+    },
+    
+    resolve: {
+        fallback: {
+            'fs': false,
+            'path': false,
+        },
+    },
+};
+```
+
+### Vite Configuration
+
+```javascript
+// vite.config.js
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+    // ... other config ...
+    
+    optimizeDeps: {
+        exclude: ['onnxruntime-web'],
+    },
+    
+    server: {
+        headers: {
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+            'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+    },
+});
+```
+
+### Service Worker
+
+```javascript
+// Cache model for offline use
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.open('ml-models-v1').then((cache) => {
+            return cache.addAll([
+                '/model.onnx',
+                '/ort-wasm.wasm',
+                '/ort-wasm-simd.wasm',
+            ]);
+        })
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request).then((response) => {
+            return response || fetch(event.request);
+        })
+    );
+});
+```
+
+## Common Use Cases
+
+### Image Classification
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+async function classifyImage(session, imageElement) {
+    // Preprocess image
+    const canvas = document.createElement('canvas');
+    canvas.width = 224;
+    canvas.height = 224;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imageElement, 0, 0, 224, 224);
+    
+    const imageData = ctx.getImageData(0, 0, 224, 224);
+    const input = new Float32Array(1 * 3 * 224 * 224);
+    
+    // Convert RGBA to RGB and normalize
+    for (let i = 0; i < 224 * 224; i++) {
+        input[i] = imageData.data[i * 4] / 255.0;           // R
+        input[224 * 224 + i] = imageData.data[i * 4 + 1] / 255.0;  // G
+        input[2 * 224 * 224 + i] = imageData.data[i * 4 + 2] / 255.0; // B
+    }
+    
+    const tensor = new ort.Tensor('float32', input, [1, 3, 224, 224]);
+    const results = await session.run({ input: tensor });
+    
+    return results.output.data;
+}
+```
+
+### Object Detection
+
+```javascript
+async function detectObjects(session, image) {
+    // Preprocess and run model
+    const input = preprocessImage(image);
+    const tensor = new ort.Tensor('float32', input, [1, 3, 640, 640]);
+    
+    const results = await session.run({ images: tensor });
+    
+    // Post-process results
+    const boxes = results.boxes.data;  // [x, y, w, h, confidence, class]
+    const detections = [];
+    
+    for (let i = 0; i < boxes.length / 6; i++) {
+        const confidence = boxes[i * 6 + 4];
+        if (confidence > 0.5) {
+            detections.push({
+                x: boxes[i * 6],
+                y: boxes[i * 6 + 1],
+                width: boxes[i * 6 + 2],
+                height: boxes[i * 6 + 3],
+                confidence: confidence,
+                class: boxes[i * 6 + 5],
+            });
+        }
+    }
+    
+    return detections;
+}
+```
+
+### Real-Time Video Processing
+
+```javascript
+async function processVideoStream() {
+    const video = document.getElementById('video');
+    const session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['webgpu'],
+    });
+    
+    async function processFrame() {
+        const results = await classifyImage(session, video);
+        displayResults(results);
+        requestAnimationFrame(processFrame);
+    }
+    
+    // Start processing
+    processFrame();
+}
+```
+
+## Browser Compatibility
+
+| Browser | Version | Support | Notes |
+|---------|---------|---------|-------|
+| Chrome | 113+ | ✅ Full | Best support |
+| Edge | 113+ | ✅ Full | Same as Chrome |
+| Safari | 18+ | ✅ Good | macOS only |
+| Firefox | - | ⚠️ Experimental | Enable flag |
+| Chrome Android | 113+ | ⚠️ Limited | Some devices |
+| Safari iOS | 18+ | ⚠️ Limited | Recent devices |
+
+## Troubleshooting
+
+### WebGPU Not Available
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+if (!('gpu' in navigator)) {
+    console.warn('WebGPU not supported in this browser');
+    // Use WebAssembly fallback
+    const session = await ort.InferenceSession.create('model.onnx', {
+        executionProviders: ['wasm'],
+    });
+}
+```
+
+### CORS Issues
+
+```javascript
+// Ensure model is served with correct headers
+// Server configuration (Express example)
+app.use((req, res, next) => {
+    res.header('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.header('Cross-Origin-Opener-Policy', 'same-origin');
+    next();
+});
+```
+
+### Performance Monitoring
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+// Enable profiling
+const session = await ort.InferenceSession.create('model.onnx', {
+    executionProviders: ['webgpu'],
+    enableProfiling: true,
+});
+
+// Time inference
+const start = performance.now();
+const results = await session.run({ input: tensor });
+const end = performance.now();
+console.log(`Inference took ${end - start}ms`);
+```
+
+### Memory Issues
+
+```javascript
+// Monitor memory usage
+if (performance.memory) {
+    console.log('Used JS heap:', performance.memory.usedJSHeapSize / 1024 / 1024, 'MB');
+    console.log('Total JS heap:', performance.memory.totalJSHeapSize / 1024 / 1024, 'MB');
+}
+
+// Clean up session when done
+await session.release();
+```
+
+## Performance Comparison
+
+Typical performance on modern laptop (relative to CPU):
+
+| Provider | Speed | Use Case |
+|----------|-------|----------|
+| WebGPU | 5-10x | GPU available |
+| WebAssembly (SIMD) | 2-3x | CPU only, modern browser |
+| WebAssembly | 1x | Baseline |
+
+## Next Steps
+
+- Learn about [model optimization for web](/inference/model-optimization)
+- See [ONNX.js migration guide](/migration/onnxjs)
+- Explore [web assembly optimization](/performance/webassembly)
+- Check [WebGPU specification](https://gpuweb.github.io/gpuweb/)

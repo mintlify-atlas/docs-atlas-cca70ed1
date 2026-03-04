@@ -1,0 +1,560 @@
+---
+title: OrtEnvironment Class
+description: Java OrtEnvironment API reference for managing ONNX Runtime resources
+---
+
+The `OrtEnvironment` class is the main entry point for ONNX Runtime in Java. It manages the runtime environment and session creation.
+
+## Package
+
+```java
+ai.onnxruntime.OrtEnvironment
+```
+
+## Class Declaration
+
+```java
+public final class OrtEnvironment implements AutoCloseable
+```
+
+## Singleton Pattern
+
+`OrtEnvironment` follows a singleton pattern - only one instance can exist per JVM.
+
+### Getting the Environment
+
+#### getEnvironment()
+
+Gets the default environment instance.
+
+```java
+public static synchronized OrtEnvironment getEnvironment()
+```
+
+**Example:**
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+// Uses default name "ort-java" and WARNING log level
+```
+
+#### getEnvironment(String)
+
+Gets environment with custom name.
+
+```java
+public static OrtEnvironment getEnvironment(String name)
+```
+
+**Example:**
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment("MyApplication");
+```
+
+#### getEnvironment(OrtLoggingLevel)
+
+Gets environment with custom log level.
+
+```java
+public static OrtEnvironment getEnvironment(OrtLoggingLevel logLevel)
+```
+
+**Example:**
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE
+);
+```
+
+#### getEnvironment(OrtLoggingLevel, String)
+
+Gets environment with custom log level and name.
+
+```java
+public static synchronized OrtEnvironment getEnvironment(
+    OrtLoggingLevel loggingLevel,
+    String name
+)
+```
+
+**Example:**
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,
+    "ProductionApp"
+);
+```
+
+## Logging Levels
+
+```java
+public enum OrtLoggingLevel {
+    ORT_LOGGING_LEVEL_VERBOSE,  // Detailed debug information
+    ORT_LOGGING_LEVEL_INFO,      // Informational messages
+    ORT_LOGGING_LEVEL_WARNING,   // Warning messages (default)
+    ORT_LOGGING_LEVEL_ERROR,     // Error messages
+    ORT_LOGGING_LEVEL_FATAL      // Fatal errors only
+}
+```
+
+**Example:**
+
+```java
+// Development
+OrtEnvironment devEnv = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
+    "Development"
+);
+
+// Production
+OrtEnvironment prodEnv = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR,
+    "Production"
+);
+```
+
+## Creating Sessions
+
+### createSession(String, SessionOptions)
+
+Creates a session from a model file.
+
+```java
+public OrtSession createSession(
+    String modelPath,
+    OrtSession.SessionOptions options
+) throws OrtException
+```
+
+**Example:**
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+OrtSession session = env.createSession("model.onnx", opts);
+```
+
+### createSession(byte[], SessionOptions)
+
+Creates a session from a byte array.
+
+```java
+public OrtSession createSession(
+    byte[] modelArray,
+    OrtSession.SessionOptions options
+) throws OrtException
+```
+
+**Example:**
+
+```java
+byte[] modelBytes = Files.readAllBytes(Paths.get("model.onnx"));
+OrtSession session = env.createSession(modelBytes, opts);
+```
+
+### createSession(ByteBuffer, SessionOptions)
+
+Creates a session from a ByteBuffer.
+
+```java
+public OrtSession createSession(
+    ByteBuffer modelBuffer,
+    OrtSession.SessionOptions options
+) throws OrtException
+```
+
+**Example:**
+
+```java
+ByteBuffer buffer = ...; // Direct ByteBuffer
+OrtSession session = env.createSession(buffer, opts);
+```
+
+## Thread Pool Configuration
+
+### getEnvironment with ThreadingOptions
+
+Creates environment with custom global thread pool.
+
+```java
+public static synchronized OrtEnvironment getEnvironment(
+    OrtLoggingLevel loggingLevel,
+    String name,
+    ThreadingOptions threadOptions
+)
+```
+
+**Example:**
+
+```java
+ThreadingOptions threadOpts = new ThreadingOptions();
+threadOpts.setGlobalIntraOpNumThreads(4);
+threadOpts.setGlobalInterOpNumThreads(2);
+
+OrtEnvironment env = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING,
+    "ThreadedApp",
+    threadOpts
+);
+```
+
+## ThreadingOptions
+
+Configure global thread pool settings.
+
+```java
+ThreadingOptions opts = new ThreadingOptions();
+
+// Intra-op threads (parallelism within operators)
+opts.setGlobalIntraOpNumThreads(4);
+
+// Inter-op threads (parallelism between operators)
+opts.setGlobalInterOpNumThreads(2);
+
+// Spin control for thread pool
+opts.setGlobalSpinControl(true);
+```
+
+## Resource Management
+
+### close()
+
+Closes the environment and releases resources.
+
+```java
+public void close()
+```
+
+**Note:** The environment is automatically closed via JVM shutdown hook. Calling `close()` is optional but harmless.
+
+**Example:**
+
+```java
+// Explicit close
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+try {
+    // Use environment
+} finally {
+    env.close(); // Optional
+}
+
+// try-with-resources (recommended)
+try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+    // Use environment
+} // Automatically closed
+```
+
+## Singleton Behavior
+
+Once created, the environment cannot be reconfigured:
+
+```java
+// First call creates environment
+OrtEnvironment env1 = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,
+    "App1"
+);
+
+// Second call returns same instance, logs warning if different config
+OrtEnvironment env2 = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR,  // Ignored
+    "App2"                                      // Ignored
+);
+
+assert env1 == env2; // Same instance
+```
+
+## Complete Examples
+
+### Basic Setup
+
+```java
+import ai.onnxruntime.*;
+
+public class BasicExample {
+    public static void main(String[] args) throws OrtException {
+        // Create environment
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+            
+            // Create session
+            OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+            try (OrtSession session = env.createSession("model.onnx", opts)) {
+                
+                // Run inference
+                // ...
+            }
+        }
+    }
+}
+```
+
+### Production Configuration
+
+```java
+import ai.onnxruntime.*;
+
+public class ProductionApp {
+    private static OrtEnvironment env;
+    
+    public static void initialize() {
+        // Configure threading
+        ThreadingOptions threadOpts = new ThreadingOptions();
+        threadOpts.setGlobalIntraOpNumThreads(
+            Runtime.getRuntime().availableProcessors()
+        );
+        threadOpts.setGlobalInterOpNumThreads(1);
+        
+        // Create environment
+        env = OrtEnvironment.getEnvironment(
+            OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING,
+            "ProductionApp",
+            threadOpts
+        );
+        
+        System.out.println("ONNX Runtime initialized");
+    }
+    
+    public static OrtEnvironment getEnv() {
+        if (env == null) {
+            initialize();
+        }
+        return env;
+    }
+}
+```
+
+### Multi-Session Application
+
+```java
+import ai.onnxruntime.*;
+import java.util.*;
+
+public class MultiModelApp {
+    private final OrtEnvironment env;
+    private final Map<String, OrtSession> sessions;
+    
+    public MultiModelApp() throws OrtException {
+        // Create shared environment
+        env = OrtEnvironment.getEnvironment(
+            OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,
+            "MultiModel"
+        );
+        
+        sessions = new HashMap<>();
+        
+        // Create multiple sessions
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+        opts.setOptimizationLevel(
+            OrtSession.SessionOptions.OptLevel.ALL_OPT
+        );
+        
+        sessions.put("model1", env.createSession("model1.onnx", opts));
+        sessions.put("model2", env.createSession("model2.onnx", opts));
+        sessions.put("model3", env.createSession("model3.onnx", opts));
+    }
+    
+    public OrtSession.Result runModel(String modelName, 
+                                       Map<String, OnnxTensor> inputs) 
+            throws OrtException {
+        OrtSession session = sessions.get(modelName);
+        if (session == null) {
+            throw new IllegalArgumentException("Unknown model: " + modelName);
+        }
+        return session.run(inputs);
+    }
+    
+    public void close() {
+        for (OrtSession session : sessions.values()) {
+            session.close();
+        }
+        sessions.clear();
+    }
+}
+```
+
+### Environment Singleton Manager
+
+```java
+import ai.onnxruntime.*;
+
+public class OnnxRuntimeManager {
+    private static volatile OrtEnvironment environment;
+    private static final Object lock = new Object();
+    
+    public static OrtEnvironment getEnvironment() {
+        if (environment == null) {
+            synchronized (lock) {
+                if (environment == null) {
+                    environment = OrtEnvironment.getEnvironment(
+                        OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING,
+                        "Application"
+                    );
+                }
+            }
+        }
+        return environment;
+    }
+    
+    public static OrtSession createSession(String modelPath) 
+            throws OrtException {
+        OrtEnvironment env = getEnvironment();
+        
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+        opts.setOptimizationLevel(
+            OrtSession.SessionOptions.OptLevel.ALL_OPT
+        );
+        opts.setIntraOpNumThreads(4);
+        
+        return env.createSession(modelPath, opts);
+    }
+}
+
+// Usage
+OrtSession session = OnnxRuntimeManager.createSession("model.onnx");
+```
+
+### Custom Logging
+
+```java
+import ai.onnxruntime.*;
+import java.util.logging.*;
+
+public class CustomLoggingExample {
+    private static final Logger logger = 
+        Logger.getLogger(CustomLoggingExample.class.getName());
+    
+    public static void main(String[] args) {
+        // Set Java logging level
+        logger.setLevel(Level.FINE);
+        
+        // Create ONNX Runtime environment with verbose logging
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment(
+                OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
+                "VerboseApp")) {
+            
+            logger.info("Environment created");
+            
+            // Use environment
+            OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+            try (OrtSession session = env.createSession("model.onnx", opts)) {
+                logger.info("Session created successfully");
+            }
+        } catch (OrtException e) {
+            logger.severe("ONNX Runtime error: " + e.getMessage());
+        }
+    }
+}
+```
+
+## Thread Safety
+
+The `OrtEnvironment` class is thread-safe:
+
+- Environment creation is synchronized
+- Multiple threads can safely call `getEnvironment()`
+- Sessions created from environment are thread-safe for inference
+
+```java
+// Safe to call from multiple threads
+ExecutorService executor = Executors.newFixedThreadPool(10);
+
+for (int i = 0; i < 10; i++) {
+    executor.submit(() -> {
+        try {
+            OrtEnvironment env = OrtEnvironment.getEnvironment();
+            // All threads get the same instance
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    });
+}
+```
+
+## Best Practices
+
+1. **Create early**: Initialize environment at application startup
+2. **Single instance**: Leverage singleton pattern, don't try to recreate
+3. **Configure once**: Set logging and threading on first creation
+4. **Reuse sessions**: Create sessions once, use many times
+5. **Proper cleanup**: Close sessions before environment (or use try-with-resources)
+6. **Thread configuration**: Set global thread pool if needed
+
+## Common Patterns
+
+### Application Lifecycle
+
+```java
+public class Application {
+    private OrtEnvironment env;
+    private Map<String, OrtSession> sessions = new HashMap<>();
+    
+    public void startup() throws OrtException {
+        // Initialize environment
+        env = OrtEnvironment.getEnvironment(
+            OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,
+            "MyApp"
+        );
+        
+        // Load models
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+        sessions.put("classifier", env.createSession("classifier.onnx", opts));
+        sessions.put("detector", env.createSession("detector.onnx", opts));
+    }
+    
+    public void shutdown() {
+        // Close sessions
+        sessions.values().forEach(OrtSession::close);
+        sessions.clear();
+        
+        // Environment closed by shutdown hook
+    }
+}
+```
+
+### Dependency Injection
+
+```java
+import javax.inject.*;
+
+@Singleton
+public class OrtEnvironmentProvider {
+    private final OrtEnvironment environment;
+    
+    @Inject
+    public OrtEnvironmentProvider() {
+        environment = OrtEnvironment.getEnvironment(
+            OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING,
+            "InjectedApp"
+        );
+    }
+    
+    public OrtEnvironment get() {
+        return environment;
+    }
+}
+```
+
+## Error Handling
+
+```java
+try {
+    OrtEnvironment env = OrtEnvironment.getEnvironment(
+        OrtLoggingLevel.ORT_LOGGING_LEVEL_INFO,
+        "MyApp"
+    );
+    
+    // Use environment
+} catch (Exception e) {
+    System.err.println("Failed to create environment: " + e.getMessage());
+    e.printStackTrace();
+}
+```
+
+## See Also
+
+- [OrtSession API](/api/java/ort-session)
+- [Java API Overview](/api/java/overview)
+- [SessionOptions](/api/java/ort-session#sessionoptions)

@@ -1,0 +1,571 @@
+---
+title: CoreML Execution Provider
+description: Accelerate ONNX models on Apple devices using the CoreML Execution Provider
+---
+
+# CoreML Execution Provider
+
+The CoreML Execution Provider enables hardware-accelerated inference on Apple devices by leveraging Core ML, Apple's machine learning framework. It provides access to the Apple Neural Engine (ANE), GPU, and optimized CPU execution.
+
+## When to Use CoreML EP
+
+Use the CoreML Execution Provider when:
+
+- You're deploying on iOS, iPadOS, or macOS devices
+- You want to leverage the Apple Neural Engine for maximum efficiency
+- You need low-power inference on mobile devices
+- You're building apps for iPhone, iPad, Mac, Apple Watch, or Apple TV
+- You want native Apple Silicon (M1/M2/M3) optimization
+
+## Key Features
+
+- **Apple Neural Engine**: Dedicated hardware for ML inference (16-core on A14+, M1+)
+- **Multi-Compute**: Automatic dispatch to ANE, GPU, or CPU
+- **Low Power**: Optimized for battery life on mobile devices
+- **Native Integration**: Seamless integration with Apple ecosystem
+- **ML Program**: Support for latest Core ML features (iOS 15+)
+
+## Prerequisites
+
+### Hardware Requirements
+
+**iOS/iPadOS**:
+- iPhone 8 and newer (A11 Bionic+) - Basic support
+- iPhone 12 and newer (A14+) - Full ANE support
+- iPad Pro 2018 and newer
+
+**macOS**:
+- Mac with Apple Silicon (M1/M2/M3/M4) - Best performance
+- Intel Macs with AMD GPU - Limited support
+
+**Other Apple Devices**:
+- Apple Watch Series 4+
+- Apple TV 4K (2nd gen+)
+
+### Software Requirements
+
+- **iOS/iPadOS**: 14.0 or newer (15.0+ recommended for ML Program)
+- **macOS**: 11.0 Big Sur or newer (12.0+ recommended)
+- **Xcode**: 13.0 or newer
+- **ONNX Runtime Mobile** or **ONNX Runtime for macOS**
+
+## Installation
+
+### iOS (via CocoaPods)
+
+```ruby
+# Podfile
+platform :ios, '14.0'
+
+target 'YourApp' do
+  use_frameworks!
+  pod 'onnxruntime-objc', '~> 1.17.0'
+end
+```
+
+```bash
+pod install
+```
+
+### iOS (via Swift Package Manager)
+
+```swift
+// Package.swift
+dependencies: [
+    .package(
+        url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
+        from: "1.17.0"
+    )
+]
+```
+
+### macOS (Python)
+
+```bash
+# Install ONNX Runtime for macOS
+pip install onnxruntime
+
+# Verify CoreML is available
+python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+# Should include 'CoreMLExecutionProvider'
+```
+
+### macOS (C++)
+
+```bash
+# Download pre-built binaries
+wget https://github.com/microsoft/onnxruntime/releases/download/v{version}/onnxruntime-osx-universal2-{version}.tgz
+tar -xzf onnxruntime-osx-universal2-{version}.tgz
+```
+
+## Basic Usage
+
+### Python (macOS)
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Create session with CoreML provider
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CoreMLExecutionProvider', 'CPUExecutionProvider']
+)
+
+# Prepare input
+input_name = session.get_inputs()[0].name
+x = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+# Run inference
+results = session.run(None, {input_name: x})
+```
+
+### Objective-C (iOS)
+
+```objc
+#import <onnxruntime/onnxruntime.h>
+
+// Create session options
+OrtSessionOptions* sessionOptions = NULL;
+OrtCreateSessionOptions(&sessionOptions);
+
+// Add CoreML provider
+OrtAppendExecutionProvider_CoreML(sessionOptions, 0);
+
+// Create session
+OrtSession* session = NULL;
+const char* modelPath = [[NSBundle mainBundle] pathForResource:@"model" ofType:@"onnx"].UTF8String;
+OrtCreateSession(env, modelPath, sessionOptions, &session);
+
+// Run inference
+OrtValue* inputTensor = /* create input tensor */;
+const char* inputNames[] = {"input"};
+const char* outputNames[] = {"output"};
+OrtValue* outputTensor = NULL;
+
+OrtRun(session, NULL, inputNames, &inputTensor, 1, outputNames, 1, &outputTensor);
+```
+
+### Swift (iOS)
+
+```swift
+import onnxruntime_objc
+
+do {
+    // Create session with CoreML provider
+    let env = try ORTEnv(loggingLevel: .warning)
+    let options = try ORTSessionOptions()
+    
+    // Enable CoreML
+    try options.appendCoreMLExecutionProvider()
+    
+    let modelPath = Bundle.main.path(forResource: "model", ofType: "onnx")!
+    let session = try ORTSession(env: env, modelPath: modelPath, sessionOptions: options)
+    
+    // Prepare input
+    let inputName = try session.inputNames()[0]
+    let inputShape: [NSNumber] = [1, 3, 224, 224]
+    let inputData = Data(/* your input data */)
+    let inputValue = try ORTValue(tensorData: NSMutableData(data: inputData),
+                                   elementType: .float,
+                                   shape: inputShape)
+    
+    // Run inference
+    let outputs = try session.run(withInputs: [inputName: inputValue],
+                                  outputNames: ["output"],
+                                  runOptions: nil)
+    
+    let outputValue = outputs["output"]
+    // Process output...
+    
+} catch {
+    print("Error: \(error)")
+}
+```
+
+## Configuration Options
+
+### Python Provider Options
+
+```python
+import onnxruntime as ort
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            # Use only CPU (for testing/validation)
+            'use_cpu_only': False,
+            
+            # Enable for subgraphs (default: False)
+            'enable_on_subgraph': False,
+            
+            # Only enable on devices with ANE
+            'only_enable_device_with_ane': False,
+            
+            # Require static input shapes for better performance
+            'only_allow_static_input_shapes': False,
+            
+            # Create ML Program (iOS 15+, better features)
+            'create_mlprogram': True,
+            
+            # Model caching directory
+            'model_cache_dir': '/path/to/cache',
+            
+            # Compute units: 'CPUAndNeuralEngine', 'CPUAndGPU', 'CPUOnly', 'All'
+            'compute_units': 'CPUAndNeuralEngine',
+        }
+    )]
+)
+```
+
+### CoreML Flags (C/Objective-C)
+
+```objc
+// Use CPU only (for debugging)
+uint32_t flags = COREML_FLAG_USE_CPU_ONLY;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+
+// Enable on subgraphs
+uint32_t flags = COREML_FLAG_ENABLE_ON_SUBGRAPH;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+
+// Only enable on devices with ANE (Neural Engine)
+uint32_t flags = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+
+// Require static input shapes
+uint32_t flags = COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+
+// Create ML Program (iOS 15+)
+uint32_t flags = COREML_FLAG_CREATE_MLPROGRAM;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+
+// Combine multiple flags
+uint32_t flags = COREML_FLAG_CREATE_MLPROGRAM | 
+                 COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
+OrtAppendExecutionProvider_CoreML(sessionOptions, flags);
+```
+
+## Key Configuration Parameters
+
+### Compute Units
+
+Control which hardware accelerators to use:
+
+```python
+# CPU and Neural Engine (recommended for efficiency)
+'compute_units': 'CPUAndNeuralEngine'
+
+# CPU and GPU (for models not optimized for ANE)
+'compute_units': 'CPUAndGPU'
+
+# CPU only (for validation/debugging)
+'compute_units': 'CPUOnly'
+
+# All available units (may not be optimal)
+'compute_units': 'All'
+```
+
+### ML Program vs Neural Network
+
+```python
+# Use ML Program format (iOS 15+, recommended)
+'create_mlprogram': True
+
+# Use Neural Network format (iOS 11-14, legacy)
+'create_mlprogram': False
+```
+
+**ML Program Benefits**:
+- Better operator support
+- Improved performance
+- More optimization opportunities
+- Required for latest features
+
+### Model Caching
+
+Cache compiled models for faster startup:
+
+```python
+import onnxruntime as ort
+import os
+
+# Create cache directory
+cache_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Caches', 'com.yourapp.models')
+os.makedirs(cache_dir, exist_ok=True)
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'model_cache_dir': cache_dir,
+            'create_mlprogram': True,
+        }
+    )]
+)
+
+# First run: compiles and caches model
+result = session.run(None, {input_name: x})
+
+# Subsequent runs: loads from cache (faster)
+```
+
+### ANE-Only Mode
+
+For maximum efficiency on devices with ANE:
+
+```python
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'only_enable_device_with_ane': True,
+            'compute_units': 'CPUAndNeuralEngine',
+        }
+    )]
+)
+```
+
+## Performance Optimization
+
+### Static vs Dynamic Shapes
+
+```python
+# For static shapes (better performance)
+session = ort.InferenceSession(
+    "model_static.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'only_allow_static_input_shapes': True,
+            'create_mlprogram': True,
+        }
+    )]
+)
+
+# For dynamic shapes (more flexible)
+session = ort.InferenceSession(
+    "model_dynamic.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'only_allow_static_input_shapes': False,
+            'create_mlprogram': True,
+        }
+    )]
+)
+```
+
+### Batch Size
+
+The Apple Neural Engine works best with small batch sizes:
+
+```python
+# Optimal: batch size 1 for mobile
+batch_size = 1
+x = np.random.randn(batch_size, 3, 224, 224).astype(np.float32)
+results = session.run(None, {input_name: x})
+
+# For batch processing, run sequentially
+for data in batch:
+    result = session.run(None, {input_name: data})
+```
+
+### Model Format
+
+Convert ONNX to Core ML for maximum performance:
+
+```python
+# Option 1: Use CoreML EP (automatic conversion)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CoreMLExecutionProvider']
+)
+
+# Option 2: Pre-convert to .mlmodel (more control)
+# Use coremltools for advanced conversions
+import coremltools as ct
+
+model = ct.convert(
+    "model.onnx",
+    convert_to="mlprogram",
+    compute_units=ct.ComputeUnit.ALL
+)
+model.save("model.mlpackage")
+```
+
+## Platform-Specific Considerations
+
+### iOS/iPadOS
+
+```swift
+import onnxruntime_objc
+
+// Configure for iOS
+let options = try ORTSessionOptions()
+try options.appendCoreMLExecutionProvider(
+    withFlags: UInt32(COREML_FLAG_CREATE_MLPROGRAM |
+                      COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE)
+)
+
+// Handle different device capabilities
+if #available(iOS 15.0, *) {
+    // Use ML Program
+    try options.appendCoreMLExecutionProvider(
+        withFlags: UInt32(COREML_FLAG_CREATE_MLPROGRAM)
+    )
+} else {
+    // Use Neural Network (legacy)
+    try options.appendCoreMLExecutionProvider(withFlags: 0)
+}
+```
+
+### macOS (Apple Silicon)
+
+```python
+import onnxruntime as ort
+import platform
+
+# Check if running on Apple Silicon
+if platform.processor() == 'arm':
+    # M1/M2/M3 Mac - use ANE
+    providers = [(
+        'CoreMLExecutionProvider', {
+            'compute_units': 'CPUAndNeuralEngine',
+            'create_mlprogram': True,
+        }
+    )]
+else:
+    # Intel Mac - use GPU
+    providers = [(
+        'CoreMLExecutionProvider', {
+            'compute_units': 'CPUAndGPU',
+        }
+    )]
+
+session = ort.InferenceSession("model.onnx", providers=providers)
+```
+
+### macOS (Intel)
+
+```python
+import onnxruntime as ort
+
+# Intel Mac - limited CoreML support
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'compute_units': 'CPUAndGPU',  # Use AMD GPU
+            'use_cpu_only': False,
+        }
+    ), 'CPUExecutionProvider']
+)
+```
+
+## Supported Operations
+
+CoreML EP supports most common operations. Unsupported ops fall back to CPU:
+
+```python
+import onnxruntime as ort
+
+# Some nodes may run on CoreML, others on CPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CoreMLExecutionProvider', 'CPUExecutionProvider']
+)
+
+# Check which providers are used
+print(session.get_providers())
+# ['CoreMLExecutionProvider', 'CPUExecutionProvider']
+```
+
+## Platform Support
+
+| Platform | Minimum Version | Recommended | Notes |
+|----------|----------------|-------------|-------|
+| iOS | 14.0 | 15.0+ | ML Program on 15+ |
+| iPadOS | 14.0 | 15.0+ | Full ANE support |
+| macOS | 11.0 | 12.0+ | M1+ best performance |
+| watchOS | 7.0 | 8.0+ | Limited support |
+| tvOS | 14.0 | 15.0+ | Limited support |
+
+## Troubleshooting
+
+### Provider Not Available
+
+```python
+import onnxruntime as ort
+import platform
+
+print(f"Platform: {platform.system()}")
+print(f"Processor: {platform.processor()}")
+print(f"Available providers: {ort.get_available_providers()}")
+
+# If CoreMLExecutionProvider is missing:
+# 1. Check you're on macOS/iOS
+# 2. Verify ONNX Runtime version
+# 3. Check device capabilities
+```
+
+### Model Compilation Errors
+
+```python
+import onnxruntime as ort
+
+# Enable verbose logging
+ort.set_default_logger_severity(0)
+
+try:
+    session = ort.InferenceSession(
+        "model.onnx",
+        providers=['CoreMLExecutionProvider']
+    )
+except Exception as e:
+    print(f"Error: {e}")
+    # Fallback to CPU
+    session = ort.InferenceSession(
+        "model.onnx",
+        providers=['CPUExecutionProvider']
+    )
+```
+
+### Performance Not as Expected
+
+```python
+# Ensure you're using ANE
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'CoreMLExecutionProvider', {
+            'compute_units': 'CPUAndNeuralEngine',
+            'create_mlprogram': True,
+            'only_enable_device_with_ane': True,
+        }
+    )]
+)
+
+# Use static shapes
+'only_allow_static_input_shapes': True
+
+# Cache compiled models
+'model_cache_dir': '/path/to/cache'
+```
+
+## Performance Comparison
+
+Typical performance on iPhone 13 Pro (A15 Bionic):
+
+| Configuration | Latency | Power |
+|---------------|---------|-------|
+| CPU Only | 100ms | High |
+| GPU | 20ms | Medium |
+| ANE (Neural Engine) | 10ms | Low |
+
+## Next Steps
+
+- Learn about [mobile optimization](/inference/model-optimization)
+- See [ONNX to CoreML conversion](/tools/conversion)
+- Explore [model quantization](/model-conversion/quantization)
+- Check [Apple Core ML documentation](https://developer.apple.com/documentation/coreml)

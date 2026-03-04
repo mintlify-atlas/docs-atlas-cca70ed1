@@ -1,0 +1,261 @@
+---
+title: C/C++ API Overview
+description: Overview of ONNX Runtime C and C++ APIs for model inference
+---
+
+# C/C++ API Overview
+
+ONNX Runtime provides both C and C++ APIs for high-performance inference and training of deep learning models.
+
+## API Design
+
+### C API
+
+The C API (`onnxruntime_c_api.h`) is the foundation of ONNX Runtime:
+- **Version**: Current API version is `ORT_API_VERSION 25`
+- **Error Handling**: Functions return `OrtStatus*` (nullptr indicates success)
+- **Memory Management**: Manual memory management with explicit `Release*` functions
+- **Thread Safety**: Most objects are not thread-safe unless explicitly documented
+
+### C++ API
+
+The C++ API (`onnxruntime_cxx_api.h`) is a header-only wrapper around the C API:
+- **Exception Safety**: Converts C error codes to C++ exceptions
+- **RAII**: Automatic resource management through destructors
+- **Type Safety**: Strong typing with C++ classes
+- **Move Semantics**: Owning objects support move-only semantics
+
+## Core Concepts
+
+### Entry Point
+
+```c
+const OrtApiBase* OrtGetApiBase(void);
+```
+
+Get the API entry point to access all ONNX Runtime functions:
+
+```cpp
+const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+```
+
+### Key Object Types
+
+| C Type | C++ Type | Description |
+|--------|----------|-------------|
+| `OrtEnv` | `Ort::Env` | Global environment, holds logging state |
+| `OrtSessionOptions` | `Ort::SessionOptions` | Configuration for session creation |
+| `OrtSession` | `Ort::Session` | Inference session containing a loaded model |
+| `OrtValue` | `Ort::Value` | Container for tensors and other ONNX types |
+| `OrtMemoryInfo` | `Ort::MemoryInfo` | Descriptor for memory location |
+| `OrtAllocator` | `Ort::Allocator` | Memory allocator interface |
+
+## Basic Workflow
+
+### 1. Initialize Environment
+
+<CodeGroup>
+```c C API
+OrtEnv* env;
+OrtStatus* status = OrtApi->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env);
+if (status != NULL) {
+    // Handle error
+}
+```
+
+```cpp C++ API
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+```
+</CodeGroup>
+
+### 2. Create Session Options
+
+<CodeGroup>
+```c C API
+OrtSessionOptions* session_options;
+OrtApi->CreateSessionOptions(&session_options);
+OrtApi->SetIntraOpNumThreads(session_options, 1);
+OrtApi->SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_ALL);
+```
+
+```cpp C++ API
+Ort::SessionOptions session_options;
+session_options.SetIntraOpNumThreads(1);
+session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+```
+</CodeGroup>
+
+### 3. Load Model and Create Session
+
+<CodeGroup>
+```c C API
+OrtSession* session;
+const ORTCHAR_T* model_path = "model.onnx";
+OrtApi->CreateSession(env, model_path, session_options, &session);
+```
+
+```cpp C++ API
+Ort::Session session(env, "model.onnx", session_options);
+```
+</CodeGroup>
+
+### 4. Prepare Input/Output
+
+<CodeGroup>
+```c C API
+// Get input/output names and count
+size_t num_input_nodes;
+OrtApi->SessionGetInputCount(session, &num_input_nodes);
+
+OrtAllocator* allocator;
+OrtApi->GetAllocatorWithDefaultOptions(&allocator);
+
+char* input_name;
+OrtApi->SessionGetInputName(session, 0, allocator, &input_name);
+```
+
+```cpp C++ API
+size_t num_input_nodes = session.GetInputCount();
+Ort::AllocatorWithDefaultOptions allocator;
+auto input_name = session.GetInputNameAllocated(0, allocator);
+```
+</CodeGroup>
+
+### 5. Run Inference
+
+<CodeGroup>
+```c C API
+const char* input_names[] = {"input"};
+const char* output_names[] = {"output"};
+OrtValue* input_tensor = /* create input tensor */;
+OrtValue* output_tensor = NULL;
+
+OrtApi->Run(session, NULL, input_names, &input_tensor, 1,
+            output_names, 1, &output_tensor);
+```
+
+```cpp C++ API
+std::vector<const char*> input_names = {"input"};
+std::vector<const char*> output_names = {"output"};
+std::vector<Ort::Value> input_tensors;
+input_tensors.push_back(/* create input tensor */);
+
+auto output_tensors = session.Run(Ort::RunOptions{nullptr}, 
+    input_names.data(), input_tensors.data(), 1,
+    output_names.data(), 1);
+```
+</CodeGroup>
+
+### 6. Cleanup
+
+<CodeGroup>
+```c C API
+OrtApi->ReleaseValue(output_tensor);
+OrtApi->ReleaseValue(input_tensor);
+OrtApi->ReleaseSession(session);
+OrtApi->ReleaseSessionOptions(session_options);
+OrtApi->ReleaseEnv(env);
+```
+
+```cpp C++ API
+// Automatic cleanup via RAII destructors
+```
+</CodeGroup>
+
+## Error Handling
+
+### C API
+
+All C API functions that can fail return `OrtStatus*`:
+- `NULL` indicates success
+- Non-NULL indicates an error
+
+```c
+OrtStatus* status = OrtApi->CreateSession(...);
+if (status != NULL) {
+    const char* msg = OrtApi->GetErrorMessage(status);
+    OrtErrorCode code = OrtApi->GetErrorCode(status);
+    printf("Error: %s (code: %d)\n", msg, code);
+    OrtApi->ReleaseStatus(status);
+}
+```
+
+### C++ API
+
+Errors are thrown as `Ort::Exception`:
+
+```cpp
+try {
+    Ort::Session session(env, "model.onnx", session_options);
+} catch (const Ort::Exception& e) {
+    std::cout << "Error: " << e.what() << std::endl;
+    std::cout << "Error code: " << e.GetOrtErrorCode() << std::endl;
+}
+```
+
+## Platform Considerations
+
+### Path Handling
+
+- **Windows**: Use `wchar_t*` for file paths (`ORTCHAR_T` is `wchar_t`)
+- **Linux/macOS**: Use `char*` for file paths (`ORTCHAR_T` is `char`)
+
+Use the `ORT_TSTR` macro for portable string literals:
+
+```cpp
+const ORTCHAR_T* model_path = ORT_TSTR("model.onnx");
+```
+
+### Thread Safety
+
+- `OrtEnv`: Thread-safe
+- `OrtSession`: Can be used by multiple threads concurrently for inference
+- `OrtSessionOptions`: Not thread-safe (use during session creation only)
+- `OrtValue`: Not thread-safe
+
+## Data Types
+
+### Tensor Element Types
+
+```c
+typedef enum ONNXTensorElementDataType {
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,      // float
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,      // uint8_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,       // int8_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16,     // uint16_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16,      // int16_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,      // int32_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,      // int64_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,     // std::string
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,     // double
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,     // uint32_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,     // uint64_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+    // ... additional float8 and int4/int2 types
+} ONNXTensorElementDataType;
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OrtApi Structure" icon="diagram-project" href="./ort-api">
+    Complete reference for all C API functions
+  </Card>
+  <Card title="Session Management" icon="brain" href="./session">
+    Loading models and running inference
+  </Card>
+  <Card title="Tensor Operations" icon="table" href="./tensors">
+    Creating and manipulating tensors
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="./providers">
+    GPU acceleration and specialized hardware
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Python API](/api/python/overview)
+- [Performance Tuning](/performance/overview)
+- [Execution Providers](/execution-providers/overview)

@@ -1,0 +1,546 @@
+---
+title: Web-Specific APIs
+description: ONNX Runtime Web-specific APIs and configurations for browser environments
+---
+
+ONNX Runtime Web provides browser-specific APIs and configurations for running models in web applications.
+
+## Environment Configuration
+
+### ort.env
+
+Global environment configuration object.
+
+```typescript
+ort.env: {
+  wasm: WebAssemblyConfig;
+  webgl: WebGLConfig;
+  webgpu: WebGPUConfig;
+  logLevel: 'verbose' | 'info' | 'warning' | 'error' | 'fatal';
+}
+```
+
+## WebAssembly Configuration
+
+### WASM Paths
+
+Configure paths to WebAssembly files.
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+ort.env.wasm.wasmPaths = {
+  'ort-wasm-simd-threaded.wasm': '/wasm/',
+  'ort-wasm-simd.wasm': '/wasm/',
+  'ort-wasm.wasm': '/wasm/'
+};
+```
+
+### Or specify a base path:
+
+```javascript
+ort.env.wasm.wasmPaths = '/path/to/wasm/files/';
+```
+
+### SIMD Support
+
+Enable SIMD for better performance.
+
+```javascript
+ort.env.wasm.simd = true;
+```
+
+### Multi-threading
+
+Configure number of threads.
+
+```javascript
+ort.env.wasm.numThreads = 4;
+// or
+ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+```
+
+### Proxy Mode
+
+Enable proxy for multi-threading.
+
+```javascript
+ort.env.wasm.proxy = true;
+```
+
+### Complete WASM Configuration
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+// Configure WASM before creating sessions
+ort.env.wasm.wasmPaths = '/wasm/';
+ort.env.wasm.simd = true;
+ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+ort.env.wasm.proxy = true;
+
+// Now create session
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['wasm']
+});
+```
+
+## WebGL Configuration
+
+### Context Settings
+
+```javascript
+ort.env.webgl.contextId = 'webgl2';  // or 'webgl'
+```
+
+### Performance Tuning
+
+```javascript
+// MatMul batch size
+ort.env.webgl.matmulMaxBatchSize = 16;
+
+// Texture cache mode
+ort.env.webgl.textureCacheMode = 'full';  // 'full' | 'initializersOnly' | 'disabled'
+
+// Pack mode
+ort.env.webgl.pack = true;
+```
+
+### Complete WebGL Configuration
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+ort.env.webgl.contextId = 'webgl2';
+ort.env.webgl.matmulMaxBatchSize = 16;
+ort.env.webgl.textureCacheMode = 'full';
+ort.env.webgl.pack = true;
+
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['webgl']
+});
+```
+
+## WebGPU Configuration
+
+### Device Selection
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'webgpu',
+      deviceType: 'gpu',  // 'gpu' | 'cpu'
+      powerPreference: 'high-performance'  // 'low-power' | 'high-performance'
+    }
+  ]
+});
+```
+
+### Graph Capture
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'webgpu',
+      preferredLayout: 'NHWC',  // or 'NCHW'
+      enableGraphCapture: true
+    }
+  ],
+  enableGraphCapture: true
+});
+```
+
+## Feature Detection
+
+### Check WebAssembly Support
+
+```javascript
+function checkWebAssemblySupport() {
+  return typeof WebAssembly !== 'undefined';
+}
+
+if (checkWebAssemblySupport()) {
+  console.log('WebAssembly is supported');
+} else {
+  console.error('WebAssembly is not supported');
+}
+```
+
+### Check SIMD Support
+
+```javascript
+async function checkSIMDSupport() {
+  try {
+    const simdTest = await WebAssembly.validate(
+      new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+        3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+      ])
+    );
+    return simdTest;
+  } catch (e) {
+    return false;
+  }
+}
+
+const hasSIMD = await checkSIMDSupport();
+ort.env.wasm.simd = hasSIMD;
+```
+
+### Check WebGPU Support
+
+```javascript
+function checkWebGPUSupport() {
+  return 'gpu' in navigator;
+}
+
+if (checkWebGPUSupport()) {
+  console.log('WebGPU is available');
+} else {
+  console.log('WebGPU is not available');
+}
+```
+
+### Check WebGL Support
+
+```javascript
+function checkWebGLSupport() {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  return !!gl;
+}
+
+if (checkWebGLSupport()) {
+  console.log('WebGL is available');
+}
+```
+
+### Complete Feature Detection
+
+```javascript
+class BrowserCapabilities {
+  static async detect() {
+    const caps = {
+      webassembly: typeof WebAssembly !== 'undefined',
+      simd: false,
+      threads: false,
+      webgpu: 'gpu' in navigator,
+      webgl: false,
+      webgl2: false
+    };
+    
+    // Check SIMD
+    try {
+      caps.simd = await WebAssembly.validate(
+        new Uint8Array([
+          0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+          3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+        ])
+      );
+    } catch (e) {}
+    
+    // Check WebGL
+    const canvas = document.createElement('canvas');
+    caps.webgl2 = !!canvas.getContext('webgl2');
+    caps.webgl = caps.webgl2 || !!canvas.getContext('webgl');
+    
+    return caps;
+  }
+  
+  static getOptimalExecutionProviders(caps) {
+    const providers = [];
+    
+    if (caps.webgpu) {
+      providers.push('webgpu');
+    } else if (caps.webgl2) {
+      providers.push('webgl');
+    }
+    
+    providers.push('wasm');
+    return providers;
+  }
+}
+
+// Usage
+const caps = await BrowserCapabilities.detect();
+console.log('Browser capabilities:', caps);
+
+const providers = BrowserCapabilities.getOptimalExecutionProviders(caps);
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: providers
+});
+```
+
+## Loading Models
+
+### From URL
+
+```javascript
+const session = await ort.InferenceSession.create(
+  'https://example.com/model.onnx'
+);
+```
+
+### From Local File
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx');
+```
+
+### From File Input
+
+```javascript
+const fileInput = document.getElementById('modelFile');
+fileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const arrayBuffer = await file.arrayBuffer();
+  const session = await ort.InferenceSession.create(arrayBuffer);
+});
+```
+
+### From Blob
+
+```javascript
+const blob = new Blob([modelData], { type: 'application/octet-stream' });
+const arrayBuffer = await blob.arrayBuffer();
+const session = await ort.InferenceSession.create(arrayBuffer);
+```
+
+## Session Caching
+
+```javascript
+class SessionCache {
+  constructor() {
+    this.cache = new Map();
+  }
+  
+  async get(modelPath, options = {}) {
+    const key = `${modelPath}-${JSON.stringify(options)}`;
+    
+    if (!this.cache.has(key)) {
+      const session = await ort.InferenceSession.create(modelPath, options);
+      this.cache.set(key, session);
+    }
+    
+    return this.cache.get(key);
+  }
+  
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// Usage
+const cache = new SessionCache();
+const session1 = await cache.get('model.onnx');
+const session2 = await cache.get('model.onnx');  // Reuses cached session
+```
+
+## Cross-Origin Isolation
+
+For multi-threading support, enable cross-origin isolation:
+
+### Server Headers
+
+```
+Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Opener-Policy: same-origin
+```
+
+### Checking Isolation
+
+```javascript
+if (crossOriginIsolated) {
+  console.log('Cross-origin isolated - can use SharedArrayBuffer');
+  ort.env.wasm.numThreads = 4;
+} else {
+  console.warn('Not cross-origin isolated - using single thread');
+  ort.env.wasm.numThreads = 1;
+}
+```
+
+## Build Configuration
+
+### Webpack Configuration
+
+```javascript
+// webpack.config.js
+module.exports = {
+  resolve: {
+    fallback: {
+      "fs": false,
+      "path": false
+    }
+  },
+  module: {
+    rules: [
+      {
+        test: /\.wasm$/,
+        type: 'asset/resource'
+      }
+    ]
+  }
+};
+```
+
+### Vite Configuration
+
+```javascript
+// vite.config.js
+export default {
+  optimizeDeps: {
+    exclude: ['onnxruntime-web']
+  },
+  server: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin'
+    }
+  }
+};
+```
+
+## Complete Web Application Example
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+class WebMLApp {
+  constructor() {
+    this.session = null;
+    this.capabilities = null;
+  }
+  
+  async initialize() {
+    // Detect capabilities
+    this.capabilities = await this.detectCapabilities();
+    console.log('Capabilities:', this.capabilities);
+    
+    // Configure ONNX Runtime
+    this.configureOnnxRuntime();
+    
+    // Load model
+    await this.loadModel();
+    
+    console.log('Application initialized');
+  }
+  
+  async detectCapabilities() {
+    return {
+      webgpu: 'gpu' in navigator,
+      webgl2: !!document.createElement('canvas').getContext('webgl2'),
+      simd: await this.checkSIMD(),
+      threads: crossOriginIsolated
+    };
+  }
+  
+  async checkSIMD() {
+    try {
+      return await WebAssembly.validate(
+        new Uint8Array([
+          0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123,
+          3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+        ])
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  configureOnnxRuntime() {
+    // Configure WASM
+    ort.env.wasm.wasmPaths = '/wasm/';
+    ort.env.wasm.simd = this.capabilities.simd;
+    
+    if (this.capabilities.threads) {
+      ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+      ort.env.wasm.proxy = true;
+    }
+    
+    // Configure logging
+    ort.env.logLevel = 'warning';
+  }
+  
+  async loadModel() {
+    // Choose execution providers
+    const providers = [];
+    
+    if (this.capabilities.webgpu) {
+      providers.push('webgpu');
+    } else if (this.capabilities.webgl2) {
+      providers.push('webgl');
+    }
+    providers.push('wasm');
+    
+    // Create session
+    this.session = await ort.InferenceSession.create('model.onnx', {
+      executionProviders: providers,
+      graphOptimizationLevel: 'all',
+      enableCpuMemArena: true
+    });
+    
+    console.log('Model loaded with providers:', providers);
+  }
+  
+  async predict(inputData) {
+    const tensor = new ort.Tensor('float32', inputData.data, inputData.shape);
+    const feeds = { [this.session.inputNames[0]]: tensor };
+    const results = await this.session.run(feeds);
+    return results[this.session.outputNames[0]].data;
+  }
+}
+
+// Usage
+const app = new WebMLApp();
+await app.initialize();
+
+const predictions = await app.predict({
+  data: new Float32Array([...]),
+  shape: [1, 3, 224, 224]
+});
+```
+
+## Performance Monitoring
+
+```javascript
+class PerformanceMonitor {
+  async measureInference(session, input) {
+    const iterations = 100;
+    const times = [];
+    
+    // Warmup
+    for (let i = 0; i < 10; i++) {
+      await session.run(input);
+    }
+    
+    // Measure
+    for (let i = 0; i < iterations; i++) {
+      const start = performance.now();
+      await session.run(input);
+      const end = performance.now();
+      times.push(end - start);
+    }
+    
+    return {
+      mean: times.reduce((a, b) => a + b) / times.length,
+      min: Math.min(...times),
+      max: Math.max(...times),
+      median: times.sort((a, b) => a - b)[Math.floor(times.length / 2)]
+    };
+  }
+}
+
+// Usage
+const monitor = new PerformanceMonitor();
+const stats = await monitor.measureInference(session, feeds);
+console.log('Performance:', stats);
+```
+
+## See Also
+
+- [InferenceSession](/api/javascript/inference-session)
+- [Tensor](/api/javascript/tensor)
+- [Node.js APIs](/api/javascript/node)
+- [WebAssembly Deployment](/advanced/webassembly)

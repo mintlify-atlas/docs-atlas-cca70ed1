@@ -1,0 +1,350 @@
+---
+title: Execution Providers
+description: Hardware acceleration with execution providers
+---
+
+## Execution Providers
+
+Execution Providers (EPs) enable ONNX Runtime to execute models on different hardware accelerators including CPUs, GPUs, NPUs, and specialized AI chips. Each provider optimizes inference for specific hardware.
+
+## Available Providers
+
+### Getting Provider Information
+
+```python
+import onnxruntime as ort
+
+# Get all providers built into this installation
+all_providers = ort.get_all_providers()
+print(f"All providers: {all_providers}")
+
+# Get providers available on this system
+available_providers = ort.get_available_providers()
+print(f"Available providers: {available_providers}")
+```
+
+### Common Execution Providers
+
+<ParamField path="CPUExecutionProvider" type="string">
+  Default CPU execution provider. Always available. Optimized for x86 and ARM CPUs.
+</ParamField>
+
+<ParamField path="CUDAExecutionProvider" type="string">
+  NVIDIA GPU acceleration via CUDA. Requires CUDA installation.
+</ParamField>
+
+<ParamField path="TensorrtExecutionProvider" type="string">
+  NVIDIA TensorRT for optimized GPU inference. Requires TensorRT installation.
+</ParamField>
+
+<ParamField path="ROCMExecutionProvider" type="string">
+  AMD GPU acceleration via ROCm.
+</ParamField>
+
+<ParamField path="OpenVINOExecutionProvider" type="string">
+  Intel hardware acceleration (CPU, GPU, VPU).
+</ParamField>
+
+<ParamField path="CoreMLExecutionProvider" type="string">
+  Apple Neural Engine and GPU acceleration on macOS/iOS.
+</ParamField>
+
+<ParamField path="DmlExecutionProvider" type="string">
+  DirectML acceleration for Windows (AMD, Intel, NVIDIA GPUs).
+</ParamField>
+
+<ParamField path="QNNExecutionProvider" type="string">
+  Qualcomm NPU acceleration for mobile and edge devices.
+</ParamField>
+
+## Configuring Providers
+
+### Basic Provider Selection
+
+```python
+import onnxruntime as ort
+
+# Use default providers (all available)
+sess = ort.InferenceSession("model.onnx")
+
+# Specify providers by name
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+
+# Providers are tried in order - CUDA first, CPU as fallback
+```
+
+### Provider Options
+
+```python
+# Method 1: Provider name with options dict
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ("CUDAExecutionProvider", {
+            "device_id": 0,
+            "arena_extend_strategy": "kNextPowerOfTwo",
+            "gpu_mem_limit": 2 * 1024 * 1024 * 1024,  # 2GB
+            "cudnn_conv_algo_search": "EXHAUSTIVE",
+            "do_copy_in_default_stream": True,
+        }),
+        "CPUExecutionProvider"
+    ]
+)
+
+# Method 2: Separate provider_options list
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    provider_options=[
+        {"device_id": "0", "gpu_mem_limit": "2147483648"},
+        {}
+    ]
+)
+```
+
+## CUDA Provider Options
+
+<ParamField path="device_id" type="int">
+  GPU device ID to use. Default is 0.
+</ParamField>
+
+<ParamField path="gpu_mem_limit" type="int">
+  Maximum GPU memory in bytes. Default is max available.
+</ParamField>
+
+<ParamField path="arena_extend_strategy" type="str">
+  Memory allocation strategy: "kNextPowerOfTwo" or "kSameAsRequested".
+</ParamField>
+
+<ParamField path="cudnn_conv_algo_search" type="str">
+  Convolution algorithm search: "EXHAUSTIVE", "HEURISTIC", or "DEFAULT".
+</ParamField>
+
+<ParamField path="do_copy_in_default_stream" type="bool">
+  Use default CUDA stream for copies. Default is True.
+</ParamField>
+
+<ParamField path="cudnn_conv_use_max_workspace" type="bool">
+  Allow cuDNN to use maximum workspace size.
+</ParamField>
+
+<ParamField path="enable_cuda_graph" type="bool">
+  Enable CUDA graphs for faster execution with fixed input shapes.
+</ParamField>
+
+### CUDA Provider Example
+
+```python
+cuda_options = {
+    "device_id": 0,
+    "arena_extend_strategy": "kSameAsRequested",
+    "gpu_mem_limit": 4 * 1024 * 1024 * 1024,  # 4GB limit
+    "cudnn_conv_algo_search": "EXHAUSTIVE",
+    "do_copy_in_default_stream": True,
+    "enable_cuda_graph": False,
+}
+
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[("CUDAExecutionProvider", cuda_options), "CPUExecutionProvider"]
+)
+```
+
+## TensorRT Provider Options
+
+<ParamField path="device_id" type="int">
+  GPU device ID. Default is 0.
+</ParamField>
+
+<ParamField path="trt_max_workspace_size" type="int">
+  Maximum TensorRT workspace size in bytes. Default is 1GB.
+</ParamField>
+
+<ParamField path="trt_fp16_enable" type="bool">
+  Enable FP16 precision. Default is False.
+</ParamField>
+
+<ParamField path="trt_int8_enable" type="bool">
+  Enable INT8 quantization. Default is False.
+</ParamField>
+
+<ParamField path="trt_int8_calibration_table_name" type="str">
+  Path to INT8 calibration table.
+</ParamField>
+
+<ParamField path="trt_engine_cache_enable" type="bool">
+  Enable TensorRT engine caching. Default is False.
+</ParamField>
+
+<ParamField path="trt_engine_cache_path" type="str">
+  Directory to store cached engines.
+</ParamField>
+
+### TensorRT Provider Example
+
+```python
+tensorrt_options = {
+    "device_id": 0,
+    "trt_max_workspace_size": 2147483648,  # 2GB
+    "trt_fp16_enable": True,
+    "trt_engine_cache_enable": True,
+    "trt_engine_cache_path": "./trt_cache",
+}
+
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[("TensorrtExecutionProvider", tensorrt_options), "CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+```
+
+## Dynamic Provider Management
+
+### Query Current Providers
+
+```python
+sess = ort.InferenceSession("model.onnx")
+
+# Get active providers
+providers = sess.get_providers()
+print(f"Active providers: {providers}")
+
+# Get provider options
+options = sess.get_provider_options()
+print(f"Provider options: {options}")
+```
+
+### Change Providers at Runtime
+
+```python
+sess = ort.InferenceSession("model.onnx")
+
+# Run on CPU
+output1 = sess.run(None, inputs)
+
+# Switch to GPU
+sess.set_providers(["CUDAExecutionProvider", "CPUExecutionProvider"])
+output2 = sess.run(None, inputs)
+```
+
+### Dynamic Provider Options
+
+```python
+# Modify provider behavior at runtime
+sess.set_ep_dynamic_options({
+    "device_id": "1",  # Switch to GPU 1
+    "gpu_mem_limit": "3221225472"  # 3GB
+})
+```
+
+## Provider Fallback
+
+```python
+# Automatic fallback if provider fails
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+# Falls back to CPU if CUDA initialization fails
+
+# Disable fallback
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider"],
+    enable_fallback=0
+)
+# Raises exception if CUDA fails
+```
+
+## Multi-GPU Inference
+
+```python
+# Create sessions on different GPUs
+sess_gpu0 = ort.InferenceSession(
+    "model.onnx",
+    providers=[("CUDAExecutionProvider", {"device_id": 0})]
+)
+
+sess_gpu1 = ort.InferenceSession(
+    "model.onnx",
+    providers=[("CUDAExecutionProvider", {"device_id": 1})]
+)
+
+# Run inference on different GPUs
+output0 = sess_gpu0.run(None, inputs0)
+output1 = sess_gpu1.run(None, inputs1)
+```
+
+## Provider-Specific Features
+
+### CUDA Graphs
+
+```python
+# Enable CUDA graphs for fixed input shapes
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+)
+
+# First run captures the graph
+output = sess.run(None, inputs)
+
+# Subsequent runs replay the graph (much faster)
+for _ in range(100):
+    output = sess.run(None, inputs)  # Same input shape required
+```
+
+### TensorRT Engine Caching
+
+```python
+import os
+
+os.makedirs("./trt_cache", exist_ok=True)
+
+# First run builds and caches TensorRT engines
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[("TensorrtExecutionProvider", {
+        "trt_engine_cache_enable": True,
+        "trt_engine_cache_path": "./trt_cache",
+        "trt_fp16_enable": True,
+    })]
+)
+
+# First inference is slow (building engines)
+output = sess.run(None, inputs)
+
+# Create new session - loads cached engines (fast)
+sess2 = ort.InferenceSession(
+    "model.onnx",
+    providers=[("TensorrtExecutionProvider", {
+        "trt_engine_cache_enable": True,
+        "trt_engine_cache_path": "./trt_cache",
+        "trt_fp16_enable": True,
+    })]
+)
+```
+
+## Provider Selection Best Practices
+
+```python
+# Check for available hardware
+available = ort.get_available_providers()
+
+if "CUDAExecutionProvider" in available:
+    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+elif "CoreMLExecutionProvider" in available:
+    providers = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+else:
+    providers = ["CPUExecutionProvider"]
+
+sess = ort.InferenceSession("model.onnx", providers=providers)
+```
+
+## Related APIs
+
+- [InferenceSession](/api/python/inference-session) - Create sessions with providers
+- [SessionOptions](/api/python/session-options) - Session configuration
+- [IOBinding](/api/python/io-binding) - Device memory management

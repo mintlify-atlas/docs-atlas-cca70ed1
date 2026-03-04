@@ -1,0 +1,195 @@
+---
+title: Custom Operators
+description: Create and register custom operators in ONNX Runtime
+---
+
+Custom operators allow you to extend ONNX Runtime with your own operations when the built-in operators don't meet your needs.
+
+## Overview
+
+ONNX Runtime provides a mechanism to register custom operators at runtime. This is useful when:
+
+- You need domain-specific operations not in the ONNX spec
+- You want to optimize certain operations for your hardware
+- You need to integrate proprietary algorithms
+
+## Creating a Custom Operator
+
+### C++ Implementation
+
+Custom operators are implemented in C++ using the ONNX Runtime C API:
+
+```cpp
+#include <onnxruntime_c_api.h>
+
+// Define the operator kernel
+struct CustomOpKernel {
+  void Compute(OrtKernelContext* context) {
+    // Get input tensor
+    const OrtValue* input = ort.KernelContext_GetInput(context, 0);
+    
+    // Get tensor data
+    float* input_data;
+    ort.GetTensorMutableData(input, (void**)&input_data);
+    
+    // Perform computation
+    // ...
+    
+    // Set output
+    OrtValue* output = ort.KernelContext_GetOutput(context, 0, shape, shape_len);
+  }
+};
+```
+
+### Operator Schema
+
+Define the operator's input/output schema:
+
+```cpp
+const char* GetInputName(size_t index) {
+  switch(index) {
+    case 0: return "X";
+    default: return nullptr;
+  }
+}
+
+const char* GetOutputName(size_t index) {
+  switch(index) {
+    case 0: return "Y";
+    default: return nullptr;
+  }
+}
+```
+
+## Registering Custom Operators
+
+### Using SessionOptions
+
+Register your custom operator when creating an inference session:
+
+```cpp
+SessionOptions options;
+OrtCustomOpDomain* domain = nullptr;
+ort.CreateCustomOpDomain("com.mycompany", &domain);
+
+// Add custom op to domain
+ort.CustomOpDomain_Add(domain, &custom_op);
+
+// Add domain to session options
+ort.AddCustomOpDomain(options, domain);
+
+// Create session
+InferenceSession session(env, model_path, options);
+```
+
+### Python Example
+
+```python
+import onnxruntime as ort
+from my_custom_ops import get_custom_op_library
+
+session_options = ort.SessionOptions()
+session_options.register_custom_ops_library(get_custom_op_library())
+
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+## Microsoft Contrib Operators
+
+ONNX Runtime includes many contrib operators in the `com.microsoft` domain for specialized use cases:
+
+### Attention Operators
+- `Attention` - Multi-head attention for transformers
+- `MultiHeadAttention` - Optimized multi-head attention
+- `GroupQueryAttention` - Grouped query attention for efficient inference
+
+### Quantization Operators
+- `MatMulNBits` - N-bit quantized matrix multiplication
+- `QLinearConv` - Quantized convolution
+- `DynamicQuantizeMatMul` - Dynamic quantization for MatMul
+
+### Activation Functions
+- `Gelu` - Gaussian Error Linear Unit
+- `FastGelu` - Fast approximation of GELU
+- `QuickGelu` - Quick GELU variant
+
+### Usage Example
+
+```python
+import onnx
+from onnx import helper, TensorProto
+
+# Create a node using contrib operator
+node = helper.make_node(
+    'Gelu',
+    inputs=['input'],
+    outputs=['output'],
+    domain='com.microsoft'
+)
+```
+
+## Best Practices
+
+### Performance
+
+- **Vectorize operations**: Use SIMD instructions when possible
+- **Minimize memory allocations**: Reuse buffers where feasible
+- **Thread safety**: Ensure your operator is thread-safe for parallel execution
+
+### Compatibility
+
+- **Version your operators**: Use operator versioning for backward compatibility
+- **Document schemas**: Clearly document input/output types and shapes
+- **Handle edge cases**: Validate inputs and handle boundary conditions
+
+### Testing
+
+```cpp
+// Test your custom operator
+void TestCustomOp() {
+  // Create test inputs
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f};
+  
+  // Run inference
+  auto outputs = session.Run({"X"}, {input_tensor});
+  
+  // Verify outputs
+  assert(outputs[0].IsEqualTo(expected_output));
+}
+```
+
+## Operator Execution Providers
+
+Custom operators can be optimized for specific execution providers:
+
+- **CPU**: Standard implementation
+- **CUDA**: GPU-accelerated version
+- **TensorRT**: TensorRT kernel implementation
+- **DirectML**: DirectX ML implementation
+
+## Resources
+
+- [ONNX Operator Schemas](https://github.com/onnx/onnx/blob/main/docs/Operators.md)
+- [Contrib Operators Reference](/advanced/custom-operators#microsoft-contrib-operators)
+- [C API Guidelines](https://github.com/microsoft/onnxruntime/blob/main/docs/C_API_Guidelines.md)
+
+## Common Issues
+
+### Operator Not Found
+
+If you see "operator not found" errors:
+
+1. Verify the operator domain is registered
+2. Check the operator name matches exactly
+3. Ensure the custom op library is loaded before session creation
+
+### Type Mismatches
+
+Ensure input/output types match the operator schema:
+
+```cpp
+// Declare supported types
+ONNXTensorElementDataType GetTypeConstraint() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+}
+```

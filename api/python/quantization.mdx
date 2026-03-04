@@ -1,0 +1,406 @@
+---
+title: Quantization API
+description: Model quantization for reduced size and improved performance
+---
+
+## Quantization
+
+ONNX Runtime provides comprehensive quantization tools to reduce model size and improve inference performance by converting models from floating-point to lower-precision integer representations.
+
+## Quantization Methods
+
+### quantize_dynamic()
+
+Dynamic quantization converts weights to INT8 while computing activations in floating-point.
+
+```python
+from onnxruntime.quantization import quantize_dynamic, QuantType
+
+quantize_dynamic(
+    model_input: str | Path,
+    model_output: str | Path,
+    weight_type: QuantType = QuantType.QInt8,
+    op_types_to_quantize: list[str] | None = None,
+    per_channel: bool = False,
+    reduce_range: bool = False,
+    nodes_to_quantize: list[str] | None = None,
+    nodes_to_exclude: list[str] | None = None,
+    use_external_data_format: bool = False
+)
+```
+
+<ParamField path="model_input" type="str | Path" required>
+  Path to the input ONNX model.
+</ParamField>
+
+<ParamField path="model_output" type="str | Path" required>
+  Path to save the quantized model.
+</ParamField>
+
+<ParamField path="weight_type" type="QuantType">
+  Data type for weights: QuantType.QInt8 or QuantType.QUInt8. Default is QInt8.
+</ParamField>
+
+<ParamField path="op_types_to_quantize" type="list[str]">
+  Operator types to quantize (e.g., ["MatMul", "Conv"]). If None, quantizes all supported ops.
+</ParamField>
+
+<ParamField path="per_channel" type="bool">
+  Use per-channel quantization for weights. Default is False.
+</ParamField>
+
+<ParamField path="reduce_range" type="bool">
+  Use 7-bit quantization for better accuracy on non-VNNI CPUs. Default is False.
+</ParamField>
+
+<ParamField path="nodes_to_quantize" type="list[str]">
+  Specific node names to quantize. If specified, only these nodes are quantized.
+</ParamField>
+
+<ParamField path="nodes_to_exclude" type="list[str]">
+  Node names to exclude from quantization.
+</ParamField>
+
+<ParamField path="use_external_data_format" type="bool">
+  Store large models (>2GB) with external data. Default is False.
+</ParamField>
+
+### quantize_static()
+
+Static quantization quantizes both weights and activations using calibration data.
+
+```python
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantType, QuantFormat
+
+quantize_static(
+    model_input: str | Path,
+    model_output: str | Path,
+    calibration_data_reader: CalibrationDataReader,
+    quant_format: QuantFormat = QuantFormat.QDQ,
+    activation_type: QuantType = QuantType.QInt8,
+    weight_type: QuantType = QuantType.QInt8,
+    op_types_to_quantize: list[str] | None = None,
+    per_channel: bool = False,
+    reduce_range: bool = False,
+    nodes_to_quantize: list[str] | None = None,
+    nodes_to_exclude: list[str] | None = None,
+    use_external_data_format: bool = False,
+    calibrate_method: CalibrationMethod = CalibrationMethod.MinMax,
+    extra_options: dict | None = None
+)
+```
+
+<ParamField path="calibration_data_reader" type="CalibrationDataReader" required>
+  Data reader that provides calibration samples for activation quantization.
+</ParamField>
+
+<ParamField path="quant_format" type="QuantFormat">
+  Quantization format: QuantFormat.QOperator or QuantFormat.QDQ. Default is QDQ.
+</ParamField>
+
+<ParamField path="activation_type" type="QuantType">
+  Data type for activations. Default is QInt8.
+</ParamField>
+
+<ParamField path="calibrate_method" type="CalibrationMethod">
+  Calibration method: MinMax, Entropy, or Percentile. Default is MinMax.
+</ParamField>
+
+<ParamField path="extra_options" type="dict">
+  Additional options for quantization behavior.
+</ParamField>
+
+### quantize()
+
+Unified quantization function using configuration objects.
+
+```python
+from onnxruntime.quantization import quantize, StaticQuantConfig, DynamicQuantConfig
+
+quantize(
+    model_input: str | Path,
+    model_output: str | Path,
+    quant_config: StaticQuantConfig | DynamicQuantConfig
+)
+```
+
+## Configuration Classes
+
+### DynamicQuantConfig
+
+```python
+from onnxruntime.quantization import DynamicQuantConfig, QuantType
+
+config = DynamicQuantConfig(
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=["MatMul", "Gemm"],
+    per_channel=False,
+    reduce_range=False,
+    nodes_to_exclude=[],
+    use_external_data_format=False
+)
+```
+
+### StaticQuantConfig
+
+```python
+from onnxruntime.quantization import StaticQuantConfig, CalibrationMethod, QuantFormat, QuantType
+
+config = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.MinMax,
+    quant_format=QuantFormat.QDQ,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=["Conv", "MatMul"],
+    per_channel=False,
+    reduce_range=False,
+    extra_options={
+        "EnableSubgraph": True,
+        "ActivationSymmetric": False,
+        "WeightSymmetric": True,
+    }
+)
+```
+
+## Calibration Data Reader
+
+### CalibrationDataReader
+
+Base class for providing calibration data to static quantization.
+
+```python
+from onnxruntime.quantization import CalibrationDataReader
+import numpy as np
+
+class MyDataReader(CalibrationDataReader):
+    def __init__(self, data_list):
+        self.data_list = data_list
+        self.iterator = iter(data_list)
+    
+    def get_next(self) -> dict[str, np.ndarray] | None:
+        """Return next calibration sample or None when done."""
+        try:
+            return next(self.iterator)
+        except StopIteration:
+            return None
+    
+    def rewind(self):
+        """Reset iterator to beginning."""
+        self.iterator = iter(self.data_list)
+
+# Usage
+data_reader = MyDataReader([
+    {"input": np.random.randn(1, 3, 224, 224).astype(np.float32)}
+    for _ in range(100)
+])
+```
+
+## Example Usage
+
+### Dynamic Quantization
+
+```python
+from onnxruntime.quantization import quantize_dynamic, QuantType
+
+# Simple dynamic quantization
+quantize_dynamic(
+    "model.onnx",
+    "model_quantized.onnx",
+    weight_type=QuantType.QInt8
+)
+
+# Quantize specific operators
+quantize_dynamic(
+    "bert_model.onnx",
+    "bert_quantized.onnx",
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=["MatMul", "Gemm"],
+    per_channel=True,
+    reduce_range=True
+)
+```
+
+### Static Quantization
+
+```python
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat, CalibrationMethod
+import numpy as np
+
+class ImageNetDataReader(CalibrationDataReader):
+    def __init__(self, image_folder, batch_size=1):
+        self.images = load_images(image_folder)  # Your image loading logic
+        self.batch_size = batch_size
+        self.idx = 0
+    
+    def get_next(self):
+        if self.idx >= len(self.images):
+            return None
+        
+        batch = self.images[self.idx:self.idx + self.batch_size]
+        self.idx += self.batch_size
+        
+        # Preprocess and return as dict
+        return {"input": preprocess(batch)}
+    
+    def rewind(self):
+        self.idx = 0
+
+# Create data reader
+data_reader = ImageNetDataReader("./calibration_images", batch_size=1)
+
+# Static quantization
+quantize_static(
+    "resnet50.onnx",
+    "resnet50_quantized.onnx",
+    calibration_data_reader=data_reader,
+    quant_format=QuantFormat.QDQ,
+    calibrate_method=CalibrationMethod.MinMax
+)
+```
+
+### Using Configuration Objects
+
+```python
+from onnxruntime.quantization import quantize, StaticQuantConfig, CalibrationMethod
+
+config = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.Entropy,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    per_channel=True,
+    extra_options={
+        "ActivationSymmetric": True,
+        "WeightSymmetric": True,
+        "EnableSubgraph": True,
+        "MatMulConstBOnly": True,
+    }
+)
+
+quantize("model.onnx", "model_quantized.onnx", config)
+```
+
+### Pre-processing Before Quantization
+
+```python
+from onnxruntime.quantization import quant_pre_process
+
+# Shape inference and optimization before quantization
+quant_pre_process(
+    "model.onnx",
+    "model_prepared.onnx",
+    skip_optimization=False,
+    skip_onnx_shape=False,
+    skip_symbolic_shape=False,
+    auto_merge=True,
+    save_as_external_data=False
+)
+
+# Then quantize the prepared model
+quantize_dynamic("model_prepared.onnx", "model_quantized.onnx")
+```
+
+## Calibration Methods
+
+<ParamField path="MinMax" type="CalibrationMethod">
+  Uses minimum and maximum values from calibration data. Fast but may not be optimal.
+</ParamField>
+
+<ParamField path="Entropy" type="CalibrationMethod">
+  Uses KL divergence to find optimal quantization parameters. More accurate but slower.
+</ParamField>
+
+<ParamField path="Percentile" type="CalibrationMethod">
+  Uses percentile values to clip outliers. Good for data with outliers.
+</ParamField>
+
+### Choosing Calibration Method
+
+```python
+from onnxruntime.quantization import CalibrationMethod
+
+# MinMax - fastest, reasonable accuracy
+config_minmax = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.MinMax
+)
+
+# Entropy - best accuracy, slower
+config_entropy = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.Entropy
+)
+
+# Percentile - robust to outliers
+config_percentile = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.Percentile
+)
+```
+
+## Advanced Options
+
+```python
+extra_options = {
+    # Activation quantization symmetry
+    "ActivationSymmetric": False,  # Asymmetric by default
+    "WeightSymmetric": True,       # Symmetric by default
+    
+    # Quantize subgraphs (e.g., in if/loop)
+    "EnableSubgraph": True,
+    
+    # Force quantization even if inputs aren't quantized
+    "ForceQuantizeNoInputCheck": False,
+    
+    # Only quantize MatMul with constant B
+    "MatMulConstBOnly": True,
+    
+    # Add QDQ pairs to weights
+    "AddQDQPairToWeight": False,
+    
+    # Exclude output quantization for specific ops
+    "OpTypesToExcludeOutputQuantization": ["Softmax"],
+    
+    # Dedicated QDQ pair per node (increases model size)
+    "DedicatedQDQPair": False,
+    
+    # Per-channel axis for specific ops
+    "QDQOpTypePerChannelSupportToAxis": {"MatMul": 1, "Conv": 0},
+    
+    # Symmetric calibration range
+    "CalibTensorRangeSymmetric": True,
+}
+
+config = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    extra_options=extra_options
+)
+```
+
+## Comparing Quantized Models
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Load original and quantized models
+sess_fp32 = ort.InferenceSession("model.onnx")
+sess_int8 = ort.InferenceSession("model_quantized.onnx")
+
+# Run inference
+inputs = {"input": test_data}
+output_fp32 = sess_fp32.run(None, inputs)[0]
+output_int8 = sess_int8.run(None, inputs)[0]
+
+# Compare accuracy
+mse = np.mean((output_fp32 - output_int8) ** 2)
+print(f"MSE: {mse}")
+print(f"Max diff: {np.max(np.abs(output_fp32 - output_int8))}")
+```
+
+## Related APIs
+
+- [InferenceSession](/api/python/inference-session) - Run quantized models
+- [SessionOptions](/api/python/session-options) - Configure execution
+- [Transformers](/api/python/transformers) - Optimize transformer models

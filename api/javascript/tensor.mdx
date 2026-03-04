@@ -1,0 +1,525 @@
+---
+title: Tensor Class (JavaScript)
+description: JavaScript Tensor API for creating and manipulating multi-dimensional arrays
+---
+
+The `Tensor` class represents multi-dimensional arrays used for model inputs and outputs in ONNX Runtime JavaScript.
+
+## Importing
+
+```javascript
+import * as ort from 'onnxruntime-web';
+// or
+const ort = require('onnxruntime-node');
+```
+
+## Creating Tensors
+
+### Constructor
+
+Creates a new tensor.
+
+```typescript
+new Tensor(
+  type: Tensor.Type,
+  data: Tensor.DataType,
+  dims?: readonly number[]
+)
+```
+
+**Parameters:**
+- `type`: Data type of the tensor
+- `data`: Tensor data as typed array or array
+- `dims`: Shape of the tensor (optional for 1D)
+
+#### Float32 Tensor
+
+```javascript
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array([1, 2, 3, 4, 5, 6]),
+  [2, 3]
+);
+
+console.log(tensor.data);  // Float32Array [1, 2, 3, 4, 5, 6]
+console.log(tensor.dims);  // [2, 3]
+console.log(tensor.type);  // 'float32'
+```
+
+#### Int64 Tensor
+
+```javascript
+const tensor = new ort.Tensor(
+  'int64',
+  new BigInt64Array([1n, 2n, 3n, 4n]),
+  [2, 2]
+);
+```
+
+#### String Tensor
+
+```javascript
+const tensor = new ort.Tensor(
+  'string',
+  ['hello', 'world', 'onnx'],
+  [3]
+);
+```
+
+#### 1D Tensor (No Dims)
+
+```javascript
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array([1, 2, 3])
+);
+// Automatically inferred as [3]
+```
+
+## Tensor Types
+
+Supported data types:
+
+```typescript
+type Type =
+  | 'float32' | 'float64'
+  | 'int8' | 'uint8' | 'int16' | 'uint16'
+  | 'int32' | 'uint32' | 'int64' | 'uint64'
+  | 'string' | 'bool'
+  | 'float16' | 'uint4' | 'int4'
+```
+
+### Type Mapping
+
+```javascript
+// Float types
+const f32 = new ort.Tensor('float32', new Float32Array([1.0]));
+const f64 = new ort.Tensor('float64', new Float64Array([1.0]));
+
+// Integer types
+const i8 = new ort.Tensor('int8', new Int8Array([1]));
+const u8 = new ort.Tensor('uint8', new Uint8Array([1]));
+const i32 = new ort.Tensor('int32', new Int32Array([1]));
+const i64 = new ort.Tensor('int64', new BigInt64Array([1n]));
+
+// Boolean
+const bool = new ort.Tensor('bool', new Uint8Array([1, 0, 1]));
+
+// String
+const str = new ort.Tensor('string', ['text']);
+```
+
+## Tensor Properties
+
+### data
+
+Gets the tensor data.
+
+```typescript
+readonly data: Tensor.DataType
+```
+
+**Example:**
+
+```javascript
+const tensor = new ort.Tensor('float32', new Float32Array([1, 2, 3]));
+console.log(tensor.data);  // Float32Array [1, 2, 3]
+```
+
+### dims
+
+Gets the tensor dimensions.
+
+```typescript
+readonly dims: readonly number[]
+```
+
+**Example:**
+
+```javascript
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array(24),
+  [2, 3, 4]
+);
+
+console.log(tensor.dims);  // [2, 3, 4]
+console.log('Rank:', tensor.dims.length);  // Rank: 3
+```
+
+### type
+
+Gets the tensor data type.
+
+```typescript
+readonly type: Tensor.Type
+```
+
+**Example:**
+
+```javascript
+const tensor = new ort.Tensor('int32', new Int32Array([1]));
+console.log(tensor.type);  // 'int32'
+```
+
+### size
+
+Gets the total number of elements.
+
+```typescript
+readonly size: number
+```
+
+**Example:**
+
+```javascript
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array(24),
+  [2, 3, 4]
+);
+
+console.log(tensor.size);  // 24
+```
+
+## GPU Tensors (WebGPU)
+
+### Creating from GPU Buffer
+
+```typescript
+new Tensor(
+  type: Tensor.GpuBufferDataTypes,
+  gpuBuffer: Tensor.GpuBufferType,
+  dims: readonly number[]
+)
+```
+
+**Example:**
+
+```javascript
+// Create GPU buffer
+const device = await navigator.gpu.requestAdapter()
+  .then(adapter => adapter.requestDevice());
+
+const gpuBuffer = device.createBuffer({
+  size: 4 * 100,  // 100 float32 values
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+});
+
+// Create tensor from GPU buffer
+const tensor = new ort.Tensor(
+  'float32',
+  gpuBuffer,
+  [10, 10]
+);
+```
+
+### WebGL Texture
+
+```typescript
+new Tensor(
+  type: 'float32',
+  texture: Tensor.TextureType,
+  dims: readonly number[]
+)
+```
+
+## Practical Examples
+
+### Image Tensor
+
+```javascript
+function imageToTensor(imageElement) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  canvas.width = 224;
+  canvas.height = 224;
+  ctx.drawImage(imageElement, 0, 0, 224, 224);
+  
+  const imageData = ctx.getImageData(0, 0, 224, 224);
+  const pixels = imageData.data;
+  
+  // Convert RGBA to RGB in CHW format
+  const red = [];
+  const green = [];
+  const blue = [];
+  
+  for (let i = 0; i < pixels.length; i += 4) {
+    red.push(pixels[i] / 255);
+    green.push(pixels[i + 1] / 255);
+    blue.push(pixels[i + 2] / 255);
+  }
+  
+  const data = Float32Array.from([...red, ...green, ...blue]);
+  return new ort.Tensor('float32', data, [1, 3, 224, 224]);
+}
+
+// Usage
+const img = document.getElementById('myImage');
+const tensor = imageToTensor(img);
+```
+
+### Batch Tensor
+
+```javascript
+function createBatch(samples) {
+  const batchSize = samples.length;
+  const featureSize = samples[0].length;
+  
+  const data = new Float32Array(batchSize * featureSize);
+  
+  samples.forEach((sample, i) => {
+    data.set(sample, i * featureSize);
+  });
+  
+  return new ort.Tensor('float32', data, [batchSize, featureSize]);
+}
+
+// Usage
+const samples = [
+  new Float32Array([1, 2, 3]),
+  new Float32Array([4, 5, 6]),
+  new Float32Array([7, 8, 9])
+];
+
+const batch = createBatch(samples);
+// Shape: [3, 3]
+```
+
+### Text Tokenization
+
+```javascript
+function createTokenTensor(tokenIds, maxLength = 512) {
+  // Pad or truncate to maxLength
+  const paddedTokens = new Array(maxLength).fill(0);
+  
+  for (let i = 0; i < Math.min(tokenIds.length, maxLength); i++) {
+    paddedTokens[i] = tokenIds[i];
+  }
+  
+  return new ort.Tensor(
+    'int64',
+    new BigInt64Array(paddedTokens.map(x => BigInt(x))),
+    [1, maxLength]
+  );
+}
+
+// Usage
+const tokenIds = [101, 2023, 2003, 1037, 3231, 102];
+const inputIds = createTokenTensor(tokenIds, 128);
+```
+
+### Attention Mask
+
+```javascript
+function createAttentionMask(sequenceLength, maxLength = 512) {
+  const mask = new Array(maxLength).fill(0);
+  
+  for (let i = 0; i < sequenceLength; i++) {
+    mask[i] = 1;
+  }
+  
+  return new ort.Tensor(
+    'int64',
+    new BigInt64Array(mask.map(x => BigInt(x))),
+    [1, maxLength]
+  );
+}
+
+// Usage
+const mask = createAttentionMask(10, 128);
+```
+
+### Tensor Manipulation
+
+```javascript
+// Extract values
+function getTensorValue(tensor, ...indices) {
+  let offset = 0;
+  let stride = 1;
+  
+  for (let i = indices.length - 1; i >= 0; i--) {
+    offset += indices[i] * stride;
+    stride *= tensor.dims[i];
+  }
+  
+  return tensor.data[offset];
+}
+
+// Usage
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array([1, 2, 3, 4, 5, 6]),
+  [2, 3]
+);
+
+console.log(getTensorValue(tensor, 1, 2));  // 6
+```
+
+### Reshaping
+
+```javascript
+function reshape(tensor, newDims) {
+  const totalSize = newDims.reduce((a, b) => a * b, 1);
+  
+  if (totalSize !== tensor.size) {
+    throw new Error('Cannot reshape: size mismatch');
+  }
+  
+  return new ort.Tensor(tensor.type, tensor.data, newDims);
+}
+
+// Usage
+const tensor = new ort.Tensor(
+  'float32',
+  new Float32Array(12),
+  [3, 4]
+);
+
+const reshaped = reshape(tensor, [2, 6]);
+```
+
+### Normalization
+
+```javascript
+function normalize(data, mean, std) {
+  return Float32Array.from(data.map((val, i) => {
+    const channelMean = mean[Math.floor(i / (data.length / 3))];
+    const channelStd = std[Math.floor(i / (data.length / 3))];
+    return (val - channelMean) / channelStd;
+  }));
+}
+
+// ImageNet normalization
+const mean = [0.485, 0.456, 0.406];
+const std = [0.229, 0.224, 0.225];
+
+const normalizedData = normalize(imageData, mean, std);
+const tensor = new ort.Tensor('float32', normalizedData, [1, 3, 224, 224]);
+```
+
+## Working with Different Formats
+
+### HWC to CHW Conversion
+
+```javascript
+function hwcToChw(hwcData, height, width, channels) {
+  const chwData = new Float32Array(height * width * channels);
+  
+  for (let c = 0; c < channels; c++) {
+    for (let h = 0; h < height; h++) {
+      for (let w = 0; w < width; w++) {
+        const hwcIndex = h * width * channels + w * channels + c;
+        const chwIndex = c * height * width + h * width + w;
+        chwData[chwIndex] = hwcData[hwcIndex];
+      }
+    }
+  }
+  
+  return chwData;
+}
+
+// Usage
+const hwc = new Float32Array(224 * 224 * 3);
+const chw = hwcToChw(hwc, 224, 224, 3);
+const tensor = new ort.Tensor('float32', chw, [1, 3, 224, 224]);
+```
+
+### One-Hot Encoding
+
+```javascript
+function oneHotEncode(labels, numClasses) {
+  const data = new Float32Array(labels.length * numClasses);
+  
+  labels.forEach((label, i) => {
+    data[i * numClasses + label] = 1.0;
+  });
+  
+  return new ort.Tensor('float32', data, [labels.length, numClasses]);
+}
+
+// Usage
+const labels = [0, 2, 1, 3];
+const oneHot = oneHotEncode(labels, 4);
+// Shape: [4, 4]
+```
+
+## Memory Management
+
+### Reusing Buffers
+
+```javascript
+class TensorPool {
+  constructor(shape, type = 'float32') {
+    this.shape = shape;
+    this.type = type;
+    this.size = shape.reduce((a, b) => a * b, 1);
+    this.buffer = this.allocateBuffer();
+  }
+  
+  allocateBuffer() {
+    switch (this.type) {
+      case 'float32': return new Float32Array(this.size);
+      case 'int32': return new Int32Array(this.size);
+      default: throw new Error(`Unsupported type: ${this.type}`);
+    }
+  }
+  
+  getTensor(data) {
+    this.buffer.set(data);
+    return new ort.Tensor(this.type, this.buffer, this.shape);
+  }
+}
+
+// Usage
+const pool = new TensorPool([1, 3, 224, 224]);
+
+for (const imageData of imageDataArray) {
+  const tensor = pool.getTensor(imageData);
+  const result = await session.run({ input: tensor });
+  // Process result
+}
+```
+
+## Type Guards
+
+```javascript
+function assertTensorType(tensor, expectedType) {
+  if (tensor.type !== expectedType) {
+    throw new Error(
+      `Expected tensor type ${expectedType}, got ${tensor.type}`
+    );
+  }
+}
+
+function assertTensorShape(tensor, expectedShape) {
+  if (tensor.dims.length !== expectedShape.length) {
+    throw new Error('Shape dimension mismatch');
+  }
+  
+  for (let i = 0; i < expectedShape.length; i++) {
+    if (expectedShape[i] !== -1 && tensor.dims[i] !== expectedShape[i]) {
+      throw new Error(`Shape mismatch at dimension ${i}`);
+    }
+  }
+}
+
+// Usage
+assertTensorType(tensor, 'float32');
+assertTensorShape(tensor, [1, 3, 224, 224]);
+```
+
+## Performance Tips
+
+1. **Reuse typed arrays**: Avoid creating new arrays for each inference
+2. **Use appropriate types**: Match model input types exactly
+3. **Pre-allocate buffers**: Create tensor buffers once
+4. **Batch processing**: Combine multiple inputs when possible
+5. **GPU tensors**: Use WebGPU buffers for better performance
+
+## See Also
+
+- [InferenceSession](/api/javascript/inference-session)
+- [Web-specific APIs](/api/javascript/web)
+- [Node.js-specific APIs](/api/javascript/node)

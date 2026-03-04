@@ -1,0 +1,221 @@
+---
+title: InferenceSession
+description: Main class for running ONNX models with ONNX Runtime
+---
+
+## InferenceSession
+
+The `InferenceSession` class is the main entry point for loading and running ONNX models. It manages model execution, execution providers, and provides methods for inference.
+
+### Constructor
+
+```python
+InferenceSession(
+    path_or_bytes: str | bytes | os.PathLike,
+    sess_options: SessionOptions | None = None,
+    providers: Sequence[str | tuple[str, dict]] | None = None,
+    provider_options: Sequence[dict] | None = None
+)
+```
+
+<ParamField path="path_or_bytes" type="str | bytes | os.PathLike" required>
+  Path to the ONNX model file or serialized model as bytes. File extension `.ort` indicates ORT format, otherwise ONNX format is assumed.
+</ParamField>
+
+<ParamField path="sess_options" type="SessionOptions">
+  Session configuration options. See [SessionOptions](/api/python/session-options) for details.
+</ParamField>
+
+<ParamField path="providers" type="Sequence[str | tuple[str, dict]]">
+  Execution providers in order of decreasing precedence. Can be provider names or tuples of (provider name, options dict). If not provided, all available providers are used.
+</ParamField>
+
+<ParamField path="provider_options" type="Sequence[dict]">
+  Options dicts corresponding to providers. Should not be used if providers contains tuples with options.
+</ParamField>
+
+### Methods
+
+#### run()
+
+Compute predictions for the given inputs.
+
+```python
+run(
+    output_names: list[str] | None,
+    input_feed: dict[str, np.ndarray],
+    run_options: RunOptions | None = None
+) -> list[np.ndarray]
+```
+
+<ParamField path="output_names" type="list[str]">
+  Names of the outputs to compute. If None, all outputs are computed.
+</ParamField>
+
+<ParamField path="input_feed" type="dict[str, np.ndarray]" required>
+  Dictionary mapping input names to input values as numpy arrays.
+</ParamField>
+
+<ParamField path="run_options" type="RunOptions">
+  Run-specific options. See [RunOptions](/api/python/run-options).
+</ParamField>
+
+<ResponseField name="outputs" type="list[np.ndarray]">
+  List of output tensors as numpy arrays.
+</ResponseField>
+
+#### run_async()
+
+Compute predictions asynchronously in a separate thread.
+
+```python
+run_async(
+    output_names: list[str] | None,
+    input_feed: dict[str, np.ndarray],
+    callback: Callable,
+    user_data: Any,
+    run_options: RunOptions | None = None
+)
+```
+
+<ParamField path="callback" type="Callable" required>
+  Python function that accepts array of results and error string. Called by ORT thread when inference completes.
+</ParamField>
+
+<ParamField path="user_data" type="Any">
+  User data passed to callback function.
+</ParamField>
+
+#### run_with_iobinding()
+
+Run inference using IOBinding for GPU memory optimization.
+
+```python
+run_with_iobinding(
+    iobinding: IOBinding,
+    run_options: RunOptions | None = None
+)
+```
+
+<ParamField path="iobinding" type="IOBinding" required>
+  IOBinding object with inputs/outputs bound to device memory. See [IOBinding](/api/python/io-binding).
+</ParamField>
+
+#### get_inputs()
+
+Get metadata about model inputs.
+
+```python
+get_inputs() -> list[NodeArg]
+```
+
+<ResponseField name="inputs" type="list[NodeArg]">
+  List of NodeArg objects describing input names, shapes, and types.
+</ResponseField>
+
+#### get_outputs()
+
+Get metadata about model outputs.
+
+```python
+get_outputs() -> list[NodeArg]
+```
+
+<ResponseField name="outputs" type="list[NodeArg]">
+  List of NodeArg objects describing output names, shapes, and types.
+</ResponseField>
+
+#### get_providers()
+
+Get registered execution providers for this session.
+
+```python
+get_providers() -> list[str]
+```
+
+<ResponseField name="providers" type="list[str]">
+  List of provider names in order of precedence.
+</ResponseField>
+
+#### set_providers()
+
+Register new execution providers, recreating the underlying session.
+
+```python
+set_providers(
+    providers: Sequence[str | tuple[str, dict]] | None = None,
+    provider_options: Sequence[dict] | None = None
+)
+```
+
+#### get_modelmeta()
+
+Get model metadata.
+
+```python
+get_modelmeta() -> ModelMetadata
+```
+
+<ResponseField name="metadata" type="ModelMetadata">
+  ModelMetadata object with producer name, version, description, etc.
+</ResponseField>
+
+#### end_profiling()
+
+End profiling session and return results file path.
+
+```python
+end_profiling() -> str
+```
+
+<ResponseField name="profile_file" type="str">
+  Path to profiling results file.
+</ResponseField>
+
+### Example Usage
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Create session with CUDA provider
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+
+# Inspect inputs
+for input in sess.get_inputs():
+    print(f"Input: {input.name}, shape: {input.shape}, type: {input.type}")
+
+# Run inference
+input_data = {"input": np.random.randn(1, 3, 224, 224).astype(np.float32)}
+outputs = sess.run(None, input_data)
+
+print(f"Output shape: {outputs[0].shape}")
+```
+
+### GPU Memory Optimization
+
+```python
+# Use IOBinding for zero-copy GPU inference
+sess = ort.InferenceSession("model.onnx", providers=["CUDAExecutionProvider"])
+
+io_binding = sess.io_binding()
+
+# Bind inputs/outputs to GPU
+ortvalue = ort.OrtValue.ortvalue_from_numpy(input_data, "cuda", 0)
+io_binding.bind_ortvalue_input("input", ortvalue)
+io_binding.bind_output("output", "cuda")
+
+# Run on GPU
+sess.run_with_iobinding(io_binding)
+outputs = io_binding.get_outputs()
+```
+
+### Related APIs
+
+- [SessionOptions](/api/python/session-options) - Configure session behavior
+- [RunOptions](/api/python/run-options) - Configure individual runs
+- [IOBinding](/api/python/io-binding) - Bind I/O to device memory
+- [Execution Providers](/api/python/providers) - Configure hardware acceleration

@@ -1,0 +1,493 @@
+---
+title: Model Quantization Guide
+description: Comprehensive guide to quantizing ONNX models for improved performance and reduced model size using ONNX Runtime quantization tools.
+---
+
+# Model Quantization Guide
+
+Quantization reduces model size and improves inference performance by converting floating-point weights and activations to lower precision formats (typically 8-bit integers). ONNX Runtime provides comprehensive quantization tools supporting both static and dynamic quantization.
+
+## Prerequisites
+
+```bash
+pip install onnxruntime onnx
+```
+
+## Quantization Methods
+
+### Dynamic Quantization
+
+Dynamic quantization converts weights to int8 at runtime, with activations quantized dynamically during inference:
+
+```python
+from onnxruntime.quantization import quantize_dynamic, QuantType
+import onnx
+
+# Quantize model
+model_input = "model.onnx"
+model_output = "model_quantized.onnx"
+
+quantize_dynamic(
+    model_input,
+    model_output,
+    weight_type=QuantType.QInt8
+)
+
+print("Dynamic quantization completed")
+```
+
+### Static Quantization
+
+Static quantization uses calibration data to determine optimal quantization parameters:
+
+```python
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantType, QuantFormat
+import numpy as np
+
+# Define calibration data reader
+class DataReader(CalibrationDataReader):
+    def __init__(self, calibration_data):
+        self.data = calibration_data
+        self.datasize = len(calibration_data)
+        self.idx = 0
+
+    def get_next(self):
+        if self.idx < self.datasize:
+            input_data = {"input": self.data[self.idx]}
+            self.idx += 1
+            return input_data
+        return None
+
+# Prepare calibration data
+calibration_samples = []
+for i in range(100):  # Use 100-1000 samples
+    sample = np.random.randn(1, 3, 224, 224).astype(np.float32)
+    calibration_samples.append(sample)
+
+data_reader = DataReader(calibration_samples)
+
+# Quantize model
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    calibration_data_reader=data_reader,
+    quant_format=QuantFormat.QDQ,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    per_channel=True
+)
+```
+
+## Configuration Options
+
+### Quantization Config
+
+Use `StaticQuantConfig` for fine-grained control:
+
+```python
+from onnxruntime.quantization import (
+    quantize_static,
+    StaticQuantConfig,
+    CalibrationDataReader,
+    CalibrationMethod,
+    QuantType,
+    QuantFormat
+)
+
+# Create quantization configuration
+quant_config = StaticQuantConfig(
+    calibration_data_reader=data_reader,
+    calibrate_method=CalibrationMethod.MinMax,
+    quant_format=QuantFormat.QDQ,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=['Conv', 'MatMul', 'Gemm'],
+    per_channel=True,
+    reduce_range=False,
+    use_external_data_format=False,
+    extra_options={
+        'ActivationSymmetric': False,
+        'WeightSymmetric': True,
+        'EnableSubgraph': False,
+        'ForceQuantizeNoInputCheck': False,
+    }
+)
+
+# Apply quantization
+from onnxruntime.quantization import quantize
+quantize(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    quant_config=quant_config
+)
+```
+
+### Calibration Methods
+
+```python
+from onnxruntime.quantization import CalibrationMethod
+
+# MinMax: Uses min/max values from calibration data
+calibrate_method = CalibrationMethod.MinMax
+
+# Entropy: Uses KL divergence to minimize information loss
+calibrate_method = CalibrationMethod.Entropy
+
+# Percentile: Uses percentile values to handle outliers
+calibrate_method = CalibrationMethod.Percentile
+```
+
+## Advanced Quantization
+
+### Per-Channel Quantization
+
+Quantize weights per output channel for better accuracy:
+
+```python
+from onnxruntime.quantization import quantize_static, QuantFormat, QuantType
+
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    calibration_data_reader=data_reader,
+    quant_format=QuantFormat.QDQ,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    per_channel=True,  # Enable per-channel quantization
+    extra_options={
+        'QDQOpTypePerChannelSupportToAxis': {
+            'MatMul': 1,  # Specify axis for MatMul
+            'Conv': 0     # Specify axis for Conv
+        }
+    }
+)
+```
+
+### Selective Quantization
+
+Quantize only specific operators:
+
+```python
+from onnxruntime.quantization import quantize_static
+
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    calibration_data_reader=data_reader,
+    op_types_to_quantize=['Conv', 'MatMul'],  # Only quantize Conv and MatMul
+    nodes_to_exclude=['final_layer'],  # Exclude specific nodes
+    per_channel=True
+)
+```
+
+### QDQ Format Quantization
+
+Quantize-Dequantize (QDQ) format is recommended for best compatibility:
+
+```python
+from onnxruntime.quantization import quantize_static, QuantFormat
+
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_qdq.onnx",
+    calibration_data_reader=data_reader,
+    quant_format=QuantFormat.QDQ,  # Use QDQ format
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    extra_options={
+        'AddQDQPairToWeight': False,  # Quantize weights directly
+        'QDQKeepRemovableActivations': False,
+        'DedicatedQDQPair': False
+    }
+)
+```
+
+## Transformer Model Quantization
+
+Specialized quantization for transformer models:
+
+```python
+from onnxruntime.quantization import quantize_dynamic
+from pathlib import Path
+
+class QuantizeHelper:
+    @staticmethod
+    def quantize_onnx_model(onnx_model_path, quantized_model_path, use_external_data_format=False):
+        """Quantize ONNX model for transformers"""
+        import onnx
+        from onnxruntime.quantization import quantize_dynamic
+        
+        Path(quantized_model_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Get model size before quantization
+        import os
+        original_size = os.path.getsize(onnx_model_path) / (1024 * 1024)
+        print(f"Original model size: {original_size:.2f} MB")
+        
+        # Quantize
+        quantize_dynamic(
+            onnx_model_path,
+            quantized_model_path,
+            use_external_data_format=use_external_data_format,
+            extra_options={"DefaultTensorType": onnx.TensorProto.FLOAT}
+        )
+        
+        # Get quantized model size
+        quantized_size = os.path.getsize(quantized_model_path) / (1024 * 1024)
+        print(f"Quantized model size: {quantized_size:.2f} MB")
+        print(f"Size reduction: {(1 - quantized_size/original_size)*100:.1f}%")
+
+# Usage
+QuantizeHelper.quantize_onnx_model(
+    "bert_model.onnx",
+    "bert_model_quantized.onnx"
+)
+```
+
+## Calibration Data Best Practices
+
+### Representative Dataset
+
+```python
+import numpy as np
+from onnxruntime.quantization import CalibrationDataReader
+
+class ImageNetDataReader(CalibrationDataReader):
+    def __init__(self, data_folder, batch_size=1, start_index=0, end_index=100):
+        self.data_folder = data_folder
+        self.batch_size = batch_size
+        self.start_index = start_index
+        self.end_index = end_index
+        self.preprocess_func = self.preprocess_imagenet
+        self.enum_data = None
+        self.datasize = 0
+
+    def get_next(self):
+        if self.enum_data is None:
+            self.enum_data = iter(
+                self.load_batches()
+            )
+        return next(self.enum_data, None)
+
+    def load_batches(self):
+        # Load calibration images
+        for idx in range(self.start_index, self.end_index):
+            image = self.load_image(idx)
+            image = self.preprocess_func(image)
+            yield {"input": image}
+
+    def preprocess_imagenet(self, image):
+        # Standard ImageNet preprocessing
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        image = (image / 255.0 - mean) / std
+        return image.astype(np.float32)
+
+# Use 100-1000 representative samples
+data_reader = ImageNetDataReader(
+    data_folder="calibration_data",
+    start_index=0,
+    end_index=500
+)
+```
+
+## Quantization Extra Options
+
+```python
+extra_options = {
+    # Symmetric quantization
+    'ActivationSymmetric': False,  # Asymmetric activations (better accuracy)
+    'WeightSymmetric': True,       # Symmetric weights (common practice)
+    
+    # Calibration options
+    'CalibTensorRangeSymmetric': False,
+    'CalibMovingAverage': True,
+    'CalibMovingAverageConstant': 0.01,
+    
+    # Quantization behavior
+    'ForceQuantizeNoInputCheck': True,
+    'MatMulConstBOnly': False,  # Quantize all MatMul operations
+    
+    # QDQ options
+    'AddQDQPairToWeight': False,
+    'DedicatedQDQPair': False,
+    'QDQKeepRemovableActivations': False,
+    
+    # Subgraph quantization
+    'EnableSubgraph': False,
+    
+    # Minimum range enforcement
+    'MinimumRealRange': None,
+    
+    # Operator exclusions
+    'OpTypesToExcludeOutputQuantization': [],
+}
+
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    calibration_data_reader=data_reader,
+    extra_options=extra_options
+)
+```
+
+## Model Preprocessing
+
+Optimize model before quantization:
+
+```python
+from onnxruntime.quantization import preprocess
+
+# Preprocess model for better quantization
+preprocess(
+    input_model_path="model.onnx",
+    output_model_path="model_preprocessed.onnx",
+    auto_merge=True,
+    save_as_external_data=False
+)
+
+# Then quantize the preprocessed model
+quantize_static(
+    model_input="model_preprocessed.onnx",
+    model_output="model_quantized.onnx",
+    calibration_data_reader=data_reader
+)
+```
+
+## Validating Quantized Models
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+def validate_quantization(original_model, quantized_model, test_data):
+    """Compare outputs between original and quantized models"""
+    # Load models
+    original_session = ort.InferenceSession(original_model)
+    quantized_session = ort.InferenceSession(quantized_model)
+    
+    input_name = original_session.get_inputs()[0].name
+    
+    # Run inference
+    original_output = original_session.run(None, {input_name: test_data})[0]
+    quantized_output = quantized_session.run(None, {input_name: test_data})[0]
+    
+    # Calculate metrics
+    mse = np.mean((original_output - quantized_output) ** 2)
+    mae = np.mean(np.abs(original_output - quantized_output))
+    max_diff = np.max(np.abs(original_output - quantized_output))
+    
+    print(f"Mean Squared Error: {mse:.6f}")
+    print(f"Mean Absolute Error: {mae:.6f}")
+    print(f"Max Absolute Difference: {max_diff:.6f}")
+    
+    # Check if outputs are close
+    rtol = 0.01  # 1% relative tolerance
+    atol = 0.01  # absolute tolerance
+    is_close = np.allclose(original_output, quantized_output, rtol=rtol, atol=atol)
+    
+    if is_close:
+        print("✓ Quantization validation passed")
+    else:
+        print("⚠ Quantization may have accuracy loss")
+    
+    return is_close
+
+# Test
+test_input = np.random.randn(1, 3, 224, 224).astype(np.float32)
+validate_quantization(
+    "model.onnx",
+    "model_quantized.onnx",
+    test_input
+)
+```
+
+## Performance Comparison
+
+```python
+import time
+import onnxruntime as ort
+import numpy as np
+
+def benchmark_model(model_path, test_data, iterations=100):
+    session = ort.InferenceSession(model_path)
+    input_name = session.get_inputs()[0].name
+    
+    # Warmup
+    for _ in range(10):
+        _ = session.run(None, {input_name: test_data})
+    
+    # Benchmark
+    start = time.time()
+    for _ in range(iterations):
+        _ = session.run(None, {input_name: test_data})
+    elapsed = time.time() - start
+    
+    return elapsed / iterations
+
+# Compare
+test_input = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+original_time = benchmark_model("model.onnx", test_input)
+quantized_time = benchmark_model("model_quantized.onnx", test_input)
+
+print(f"Original model: {original_time*1000:.2f} ms")
+print(f"Quantized model: {quantized_time*1000:.2f} ms")
+print(f"Speedup: {original_time/quantized_time:.2f}x")
+
+import os
+original_size = os.path.getsize("model.onnx") / (1024**2)
+quantized_size = os.path.getsize("model_quantized.onnx") / (1024**2)
+print(f"\nOriginal size: {original_size:.2f} MB")
+print(f"Quantized size: {quantized_size:.2f} MB")
+print(f"Size reduction: {(1-quantized_size/original_size)*100:.1f}%")
+```
+
+## Best Practices
+
+1. **Use representative calibration data**: 100-1000 samples covering your use cases
+2. **Choose appropriate method**: Dynamic for ease, static for best performance
+3. **Enable per-channel quantization**: Better accuracy with minimal overhead
+4. **Use QDQ format**: Better compatibility with execution providers
+5. **Preprocess models**: Run preprocessing before quantization
+6. **Validate accuracy**: Always compare quantized vs original outputs
+7. **Test on target hardware**: Performance gains vary by platform
+8. **Consider symmetric quantization**: For GPU/TensorRT deployment
+
+## Hardware-Specific Quantization
+
+### For CPUs (VNNI support)
+
+```python
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_cpu_int8.onnx",
+    calibration_data_reader=data_reader,
+    activation_type=QuantType.QUInt8,  # Asymmetric activations
+    weight_type=QuantType.QInt8,       # Symmetric weights
+    per_channel=True,
+    reduce_range=False
+)
+```
+
+### For GPUs (TensorRT)
+
+```python
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_gpu_int8.onnx",
+    calibration_data_reader=data_reader,
+    activation_type=QuantType.QInt8,  # Symmetric
+    weight_type=QuantType.QInt8,      # Symmetric
+    extra_options={
+        'ActivationSymmetric': True,  # Required for TensorRT
+        'WeightSymmetric': True
+    }
+)
+```
+
+## Next Steps
+
+- [Optimize quantized models](/inference/model-optimization)
+- [Deploy with execution providers](/deployment/execution-providers)
+- [Performance tuning guide](/inference/model-optimization)

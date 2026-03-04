@@ -1,0 +1,395 @@
+---
+title: Java API Overview
+description: Overview of ONNX Runtime Java API for model inference
+---
+
+The ONNX Runtime Java API provides a comprehensive interface for running ONNX models in Java applications.
+
+## Package Structure
+
+```
+ai.onnxruntime
+├── OrtEnvironment       - Main entry point and environment management
+├── OrtSession            - Inference session for model execution
+├── OnnxTensor            - Tensor data structure
+├── OnnxValue             - Base class for ONNX values
+├── SessionOptions        - Configuration options for sessions
+├── OrtAllocator          - Memory allocation management
+└── providers             - Execution provider configurations
+```
+
+## Quick Start
+
+### Maven Dependency
+
+Add to your `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>com.microsoft.onnxruntime</groupId>
+    <artifactId>onnxruntime</artifactId>
+    <version>1.17.0</version>
+</dependency>
+```
+
+### Gradle Dependency
+
+Add to your `build.gradle`:
+
+```gradle
+implementation 'com.microsoft.onnxruntime:onnxruntime:1.17.0'
+```
+
+### Basic Usage
+
+```java
+import ai.onnxruntime.*;
+import java.nio.FloatBuffer;
+import java.util.Map;
+
+public class BasicInference {
+    public static void main(String[] args) throws OrtException {
+        // Create environment
+        try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+            // Create session
+            try (OrtSession session = env.createSession("model.onnx", 
+                    new OrtSession.SessionOptions())) {
+                
+                // Create input tensor
+                float[] inputData = {1.0f, 2.0f, 3.0f, 4.0f};
+                long[] shape = {1, 4};
+                
+                OnnxTensor tensor = OnnxTensor.createTensor(
+                    env, 
+                    FloatBuffer.wrap(inputData), 
+                    shape
+                );
+                
+                // Run inference
+                try (OrtSession.Result results = session.run(
+                        Map.of("input", tensor))) {
+                    
+                    // Get output
+                    OnnxValue output = results.get(0);
+                    float[][] outputData = (float[][]) output.getValue();
+                    
+                    System.out.println("Output: " + 
+                        java.util.Arrays.deepToString(outputData));
+                }
+                
+                tensor.close();
+            }
+        }
+    }
+}
+```
+
+## Core Classes
+
+### OrtEnvironment
+
+The singleton environment that manages ONNX Runtime resources.
+
+```java
+// Get environment with default settings
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+
+// Get environment with custom logging
+OrtEnvironment env = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING,
+    "MyApp"
+);
+```
+
+### OrtSession
+
+Represents a loaded ONNX model ready for inference.
+
+```java
+// Create session from file
+OrtSession session = env.createSession(
+    "model.onnx",
+    new OrtSession.SessionOptions()
+);
+
+// Create session from byte array
+byte[] modelBytes = Files.readAllBytes(Paths.get("model.onnx"));
+OrtSession session = env.createSession(
+    modelBytes,
+    new OrtSession.SessionOptions()
+);
+```
+
+### OnnxTensor
+
+Represents multi-dimensional array data.
+
+```java
+// Create from FloatBuffer
+float[] data = {1.0f, 2.0f, 3.0f, 4.0f};
+OnnxTensor tensor = OnnxTensor.createTensor(
+    env,
+    FloatBuffer.wrap(data),
+    new long[]{2, 2}
+);
+
+// Create from multi-dimensional array
+float[][] data2d = {{1.0f, 2.0f}, {3.0f, 4.0f}};
+OnnxTensor tensor = OnnxTensor.createTensor(env, data2d);
+```
+
+## Platform-Specific Packages
+
+### Standard CPU
+
+```xml
+<dependency>
+    <groupId>com.microsoft.onnxruntime</groupId>
+    <artifactId>onnxruntime</artifactId>
+    <version>1.17.0</version>
+</dependency>
+```
+
+### GPU (CUDA)
+
+```xml
+<dependency>
+    <groupId>com.microsoft.onnxruntime</groupId>
+    <artifactId>onnxruntime_gpu</artifactId>
+    <version>1.17.0</version>
+</dependency>
+```
+
+### Android
+
+```gradle
+implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.17.0'
+```
+
+## Resource Management
+
+All ONNX Runtime objects implement `AutoCloseable` and must be properly closed.
+
+### Best Practice with try-with-resources
+
+```java
+try (OrtEnvironment env = OrtEnvironment.getEnvironment();
+     OrtSession session = env.createSession("model.onnx", 
+         new OrtSession.SessionOptions())) {
+    
+    try (OnnxTensor input = OnnxTensor.createTensor(env, inputData, shape);
+         OrtSession.Result results = session.run(Map.of("input", input))) {
+        
+        // Process results
+        processResults(results);
+    }
+}
+```
+
+### Manual Resource Management
+
+```java
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = null;
+OnnxTensor tensor = null;
+OrtSession.Result results = null;
+
+try {
+    session = env.createSession("model.onnx", new OrtSession.SessionOptions());
+    tensor = OnnxTensor.createTensor(env, data, shape);
+    results = session.run(Map.of("input", tensor));
+    
+    // Process results
+} finally {
+    if (results != null) results.close();
+    if (tensor != null) tensor.close();
+    if (session != null) session.close();
+}
+```
+
+## Error Handling
+
+```java
+try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+    try {
+        OrtSession session = env.createSession("model.onnx",
+            new OrtSession.SessionOptions());
+        // Use session
+        session.close();
+    } catch (OrtException e) {
+        System.err.println("ONNX Runtime error: " + e.getMessage());
+        e.printStackTrace();
+    }
+} catch (IOException e) {
+    System.err.println("Failed to initialize: " + e.getMessage());
+}
+```
+
+## Thread Safety
+
+- `OrtEnvironment`: Thread-safe singleton
+- `OrtSession`: Thread-safe for `run()` operations
+- `OnnxTensor`: Not thread-safe
+- `SessionOptions`: Not thread-safe
+
+```java
+// Multiple threads can use the same session
+OrtSession session = env.createSession("model.onnx", 
+    new OrtSession.SessionOptions());
+
+ExecutorService executor = Executors.newFixedThreadPool(4);
+
+for (int i = 0; i < 10; i++) {
+    executor.submit(() -> {
+        try (OnnxTensor input = createInput();
+             OrtSession.Result results = session.run(Map.of("input", input))) {
+            processResults(results);
+        } catch (OrtException e) {
+            e.printStackTrace();
+        }
+    });
+}
+```
+
+## Complete Example: Image Classification
+
+```java
+import ai.onnxruntime.*;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.nio.FloatBuffer;
+import java.util.*;
+
+public class ImageClassifier {
+    private OrtEnvironment env;
+    private OrtSession session;
+    
+    public ImageClassifier(String modelPath) throws OrtException {
+        env = OrtEnvironment.getEnvironment();
+        
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+        opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        
+        session = env.createSession(modelPath, opts);
+        
+        // Print model info
+        System.out.println("Model inputs: " + session.getInputNames());
+        System.out.println("Model outputs: " + session.getOutputNames());
+    }
+    
+    public float[] classify(String imagePath) throws Exception {
+        // Load and preprocess image
+        BufferedImage img = ImageIO.read(new File(imagePath));
+        float[] imageData = preprocessImage(img);
+        
+        // Create tensor
+        long[] shape = {1, 3, 224, 224};
+        OnnxTensor tensor = OnnxTensor.createTensor(
+            env,
+            FloatBuffer.wrap(imageData),
+            shape
+        );
+        
+        // Run inference
+        try (OrtSession.Result results = session.run(
+                Map.of(session.getInputNames().iterator().next(), tensor))) {
+            
+            float[][] output = (float[][]) results.get(0).getValue();
+            return output[0];
+        } finally {
+            tensor.close();
+        }
+    }
+    
+    private float[] preprocessImage(BufferedImage img) {
+        // Resize to 224x224
+        BufferedImage resized = new BufferedImage(224, 224, BufferedImage.TYPE_INT_RGB);
+        resized.createGraphics().drawImage(img, 0, 0, 224, 224, null);
+        
+        // Convert to CHW format and normalize
+        float[] data = new float[3 * 224 * 224];
+        float[] mean = {0.485f, 0.456f, 0.406f};
+        float[] std = {0.229f, 0.224f, 0.225f};
+        
+        for (int h = 0; h < 224; h++) {
+            for (int w = 0; w < 224; w++) {
+                int rgb = resized.getRGB(w, h);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                
+                data[h * 224 + w] = (r / 255.0f - mean[0]) / std[0];
+                data[224 * 224 + h * 224 + w] = (g / 255.0f - mean[1]) / std[1];
+                data[2 * 224 * 224 + h * 224 + w] = (b / 255.0f - mean[2]) / std[2];
+            }
+        }
+        
+        return data;
+    }
+    
+    public void close() {
+        if (session != null) session.close();
+    }
+    
+    public static void main(String[] args) throws Exception {
+        ImageClassifier classifier = new ImageClassifier("resnet50.onnx");
+        
+        try {
+            float[] predictions = classifier.classify("image.jpg");
+            
+            // Find top prediction
+            int maxIdx = 0;
+            float maxVal = predictions[0];
+            for (int i = 1; i < predictions.length; i++) {
+                if (predictions[i] > maxVal) {
+                    maxVal = predictions[i];
+                    maxIdx = i;
+                }
+            }
+            
+            System.out.println("Predicted class: " + maxIdx);
+            System.out.println("Confidence: " + maxVal);
+        } finally {
+            classifier.close();
+        }
+    }
+}
+```
+
+## Logging Configuration
+
+```java
+// Set global log level
+OrtEnvironment env = OrtEnvironment.getEnvironment(
+    OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
+    "MyApplication"
+);
+
+// Available log levels:
+// - ORT_LOGGING_LEVEL_VERBOSE
+// - ORT_LOGGING_LEVEL_INFO
+// - ORT_LOGGING_LEVEL_WARNING
+// - ORT_LOGGING_LEVEL_ERROR
+// - ORT_LOGGING_LEVEL_FATAL
+```
+
+## Performance Tips
+
+1. **Reuse sessions**: Create once, use many times
+2. **Use SessionOptions**: Enable optimizations
+3. **Batch processing**: Process multiple inputs together
+4. **Proper resource cleanup**: Always close resources
+5. **Thread pool**: Use multiple threads for parallel inference
+
+## Next Steps
+
+- [OrtSession API](/api/java/ort-session) - Detailed session documentation
+- [OrtEnvironment API](/api/java/ort-environment) - Environment management
+- [Execution Providers](/execution-providers/overview) - Hardware acceleration
+
+## Additional Resources
+
+- [Java API JavaDoc](https://javadoc.io/doc/com.microsoft.onnxruntime/onnxruntime/latest/index.html)
+- [Java Examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/java)
+- [GitHub Repository](https://github.com/microsoft/onnxruntime)

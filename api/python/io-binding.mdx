@@ -1,0 +1,362 @@
+---
+title: IOBinding
+description: Bind inputs and outputs to device memory for zero-copy inference
+---
+
+## IOBinding
+
+The `IOBinding` class provides an API to bind model inputs and outputs to specific device memory (CPU, CUDA, DirectML, etc.), enabling zero-copy inference and improved performance for GPU workloads.
+
+### Constructor
+
+IOBinding is created through an InferenceSession:
+
+```python
+io_binding = session.io_binding()
+```
+
+### Methods
+
+#### bind_cpu_input()
+
+Bind an input to a numpy array on CPU.
+
+```python
+bind_cpu_input(
+    name: str,
+    arr_on_cpu: np.ndarray
+)
+```
+
+<ParamField path="name" type="str" required>
+  Name of the input.
+</ParamField>
+
+<ParamField path="arr_on_cpu" type="np.ndarray" required>
+  Input values as a numpy array on CPU.
+</ParamField>
+
+#### bind_input()
+
+Bind an input to pre-allocated device memory.
+
+```python
+bind_input(
+    name: str,
+    device_type: str,
+    device_id: int,
+    element_type: np.dtype | int,
+    shape: tuple[int],
+    buffer_ptr: int
+)
+```
+
+<ParamField path="name" type="str" required>
+  Name of the input.
+</ParamField>
+
+<ParamField path="device_type" type="str" required>
+  Device type: "cpu", "cuda", "cann", "dml", etc.
+</ParamField>
+
+<ParamField path="device_id" type="int" required>
+  Device ID (e.g., 0 for first GPU).
+</ParamField>
+
+<ParamField path="element_type" type="np.dtype | int" required>
+  Element data type (numpy type like np.float32 or ONNX TensorProto type).
+</ParamField>
+
+<ParamField path="shape" type="tuple[int]" required>
+  Shape of the input tensor.
+</ParamField>
+
+<ParamField path="buffer_ptr" type="int" required>
+  Memory pointer to the input data buffer.
+</ParamField>
+
+#### bind_ortvalue_input()
+
+Bind an input to an OrtValue object.
+
+```python
+bind_ortvalue_input(
+    name: str,
+    ortvalue: OrtValue
+)
+```
+
+<ParamField path="name" type="str" required>
+  Name of the input.
+</ParamField>
+
+<ParamField path="ortvalue" type="OrtValue" required>
+  OrtValue instance containing input data.
+</ParamField>
+
+#### bind_output()
+
+Bind an output to device memory.
+
+```python
+bind_output(
+    name: str,
+    device_type: str = "cpu",
+    device_id: int = 0,
+    element_type: np.dtype | int | None = None,
+    shape: tuple[int] | None = None,
+    buffer_ptr: int | None = None
+)
+```
+
+<ParamField path="name" type="str" required>
+  Name of the output.
+</ParamField>
+
+<ParamField path="device_type" type="str">
+  Device type: "cpu", "cuda", etc. Default is "cpu".
+</ParamField>
+
+<ParamField path="device_id" type="int">
+  Device ID. Default is 0.
+</ParamField>
+
+<ParamField path="element_type" type="np.dtype | int">
+  Element data type. Required if buffer_ptr is provided.
+</ParamField>
+
+<ParamField path="shape" type="tuple[int]">
+  Output shape. Required if buffer_ptr is provided.
+</ParamField>
+
+<ParamField path="buffer_ptr" type="int">
+  Pre-allocated memory pointer. If None, ORT allocates memory.
+</ParamField>
+
+#### bind_ortvalue_output()
+
+Bind an output to an OrtValue object.
+
+```python
+bind_ortvalue_output(
+    name: str,
+    ortvalue: OrtValue
+)
+```
+
+#### get_outputs()
+
+Get output OrtValues after running inference.
+
+```python
+get_outputs() -> list[OrtValue]
+```
+
+<ResponseField name="outputs" type="list[OrtValue]">
+  List of OrtValue objects containing output data on their respective devices.
+</ResponseField>
+
+#### copy_outputs_to_cpu()
+
+Copy output contents to CPU as numpy arrays.
+
+```python
+copy_outputs_to_cpu() -> list[np.ndarray]
+```
+
+<ResponseField name="outputs" type="list[np.ndarray]">
+  List of output tensors as numpy arrays on CPU.
+</ResponseField>
+
+#### synchronize_inputs()
+
+Synchronize device inputs before inference.
+
+```python
+synchronize_inputs()
+```
+
+#### synchronize_outputs()
+
+Synchronize device outputs after inference.
+
+```python
+synchronize_outputs()
+```
+
+#### clear_binding_inputs()
+
+Clear all bound inputs.
+
+```python
+clear_binding_inputs()
+```
+
+#### clear_binding_outputs()
+
+Clear all bound outputs.
+
+```python
+clear_binding_outputs()
+```
+
+### Example Usage
+
+#### Basic CUDA Inference
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=["CUDAExecutionProvider"]
+)
+
+# Create IOBinding
+io_binding = sess.io_binding()
+
+# Create input on GPU
+input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+ortvalue_input = ort.OrtValue.ortvalue_from_numpy(input_data, "cuda", 0)
+
+# Bind input and output
+io_binding.bind_ortvalue_input("input", ortvalue_input)
+io_binding.bind_output("output", "cuda")
+
+# Run inference on GPU
+sess.run_with_iobinding(io_binding)
+
+# Get outputs (still on GPU)
+outputs = io_binding.get_outputs()
+print(f"Output device: {outputs[0].device_name()}")
+
+# Copy to CPU if needed
+output_cpu = io_binding.copy_outputs_to_cpu()
+```
+
+#### Reusing IOBinding for Multiple Runs
+
+```python
+sess = ort.InferenceSession("model.onnx", providers=["CUDAExecutionProvider"])
+io_binding = sess.io_binding()
+
+# Bind output once
+io_binding.bind_output("output", "cuda")
+
+# Run multiple times with different inputs
+for i in range(100):
+    # Create new input
+    input_data = generate_input(i)
+    ortvalue_input = ort.OrtValue.ortvalue_from_numpy(input_data, "cuda", 0)
+    
+    # Update input binding
+    io_binding.clear_binding_inputs()
+    io_binding.bind_ortvalue_input("input", ortvalue_input)
+    
+    # Run inference
+    sess.run_with_iobinding(io_binding)
+    
+    # Process outputs
+    outputs = io_binding.get_outputs()
+    process_output(outputs[0])
+```
+
+#### Pre-allocated Output Buffers
+
+```python
+import torch
+
+sess = ort.InferenceSession("model.onnx", providers=["CUDAExecutionProvider"])
+io_binding = sess.io_binding()
+
+# Pre-allocate output buffer with PyTorch
+output_shape = (1, 1000)
+output_buffer = torch.zeros(output_shape, dtype=torch.float32, device="cuda:0")
+
+# Bind to pre-allocated buffer
+io_binding.bind_output(
+    "output",
+    device_type="cuda",
+    device_id=0,
+    element_type=np.float32,
+    shape=output_shape,
+    buffer_ptr=output_buffer.data_ptr()
+)
+
+# Input binding
+input_ortvalue = ort.OrtValue.ortvalue_from_numpy(input_data, "cuda", 0)
+io_binding.bind_ortvalue_input("input", input_ortvalue)
+
+# Run inference - output written directly to PyTorch tensor
+sess.run_with_iobinding(io_binding)
+print(f"Output in PyTorch tensor: {output_buffer}")
+```
+
+#### Multi-Input Model
+
+```python
+sess = ort.InferenceSession("multi_input_model.onnx", providers=["CUDAExecutionProvider"])
+io_binding = sess.io_binding()
+
+# Bind multiple inputs
+input1 = ort.OrtValue.ortvalue_from_numpy(data1, "cuda", 0)
+input2 = ort.OrtValue.ortvalue_from_numpy(data2, "cuda", 0)
+
+io_binding.bind_ortvalue_input("input1", input1)
+io_binding.bind_ortvalue_input("input2", input2)
+
+# Bind multiple outputs
+io_binding.bind_output("output1", "cuda")
+io_binding.bind_output("output2", "cuda")
+
+sess.run_with_iobinding(io_binding)
+
+outputs = io_binding.get_outputs()
+output1, output2 = outputs[0], outputs[1]
+```
+
+#### CPU Binding
+
+```python
+sess = ort.InferenceSession("model.onnx")
+io_binding = sess.io_binding()
+
+# Bind CPU input directly
+input_array = np.random.randn(1, 3, 224, 224).astype(np.float32)
+io_binding.bind_cpu_input("input", input_array)
+
+# Bind output to CPU
+io_binding.bind_output("output", "cpu")
+
+sess.run_with_iobinding(io_binding)
+outputs = io_binding.copy_outputs_to_cpu()
+```
+
+### Performance Best Practices
+
+```python
+# 1. Keep data on GPU throughout pipeline
+io_binding = sess.io_binding()
+io_binding.bind_ortvalue_input("input", gpu_ortvalue)
+io_binding.bind_output("output", "cuda")
+
+sess.run_with_iobinding(io_binding)
+gpu_output = io_binding.get_outputs()[0]  # Stays on GPU
+
+# 2. Reuse IOBinding object
+for batch in batches:
+    io_binding.clear_binding_inputs()
+    io_binding.bind_ortvalue_input("input", batch)
+    sess.run_with_iobinding(io_binding)
+    outputs = io_binding.get_outputs()
+
+# 3. Synchronize explicitly when needed
+io_binding.synchronize_outputs()  # Ensure GPU work is complete
+```
+
+### Related APIs
+
+- [InferenceSession](/api/python/inference-session) - Create and run sessions
+- [OrtValue](https://onnxruntime.ai/docs/api/python/api_summary.html#ortvalue) - Device-agnostic tensor wrapper
+- [Execution Providers](/api/python/providers) - Hardware acceleration

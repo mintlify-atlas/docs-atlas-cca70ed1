@@ -1,0 +1,396 @@
+---
+title: Converting scikit-learn Models to ONNX
+description: Learn how to convert scikit-learn machine learning models to ONNX format using skl2onnx for production deployment with ONNX Runtime.
+---
+
+# Converting scikit-learn Models to ONNX
+
+The `skl2onnx` library enables conversion of scikit-learn models to ONNX format, allowing you to deploy traditional machine learning models with ONNX Runtime for improved performance.
+
+## Prerequisites
+
+```bash
+pip install scikit-learn skl2onnx onnxruntime
+```
+
+## Basic Conversion
+
+### Simple Classification Model
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.datasets import load_iris
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+import numpy as np
+
+# Train a model
+data = load_iris()
+X, y = data.data, data.target
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+model.fit(X, y)
+
+# Define input type (shape: [batch_size, n_features])
+initial_type = [('float_input', FloatTensorType([None, 4]))]
+
+# Convert to ONNX
+onnx_model = convert_sklearn(
+    model,
+    initial_types=initial_type,
+    target_opset=14
+)
+
+# Save the model
+with open("rf_classifier.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+```
+
+### Regression Model
+
+```python
+from sklearn.linear_model import LinearRegression
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+import numpy as np
+
+# Create and train model
+X = np.random.randn(100, 5).astype(np.float32)
+y = X.sum(axis=1) + np.random.randn(100) * 0.1
+
+model = LinearRegression()
+model.fit(X, y)
+
+# Convert to ONNX
+initial_type = [('float_input', FloatTensorType([None, 5]))]
+onnx_model = convert_sklearn(
+    model,
+    initial_types=initial_type,
+    target_opset=14
+)
+
+# Save
+with open("linear_regression.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+```
+
+## Pipeline Conversion
+
+Convert entire scikit-learn pipelines including preprocessing:
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.datasets import make_classification
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+
+# Create pipeline
+X, y = make_classification(n_samples=1000, n_features=20, random_state=42)
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('classifier', GradientBoostingClassifier(n_estimators=50, random_state=42))
+])
+
+pipeline.fit(X, y)
+
+# Convert entire pipeline
+initial_type = [('float_input', FloatTensorType([None, 20]))]
+onnx_model = convert_sklearn(
+    pipeline,
+    initial_types=initial_type,
+    target_opset=14
+)
+
+with open("pipeline.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+```
+
+## Advanced Conversions
+
+### Multiple Input Types
+
+```python
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.ensemble import RandomForestClassifier
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType, Int64TensorType
+import numpy as np
+
+# Prepare data
+X_numeric = np.random.randn(100, 3).astype(np.float32)
+X_categorical = np.random.randint(0, 5, size=(100, 2))
+X = np.hstack([X_numeric, X_categorical])
+y = np.random.randint(0, 2, size=100)
+
+# Create pipeline with mixed types
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), [0, 1, 2]),
+        ('cat', OneHotEncoder(), [3, 4])
+    ])
+
+model = Pipeline([
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(n_estimators=10))
+])
+
+model.fit(X, y)
+
+# Define mixed input types
+initial_type = [
+    ('numeric_input', FloatTensorType([None, 3])),
+    ('categorical_input', Int64TensorType([None, 2]))
+]
+
+onnx_model = convert_sklearn(
+    model,
+    initial_types=initial_type,
+    target_opset=14
+)
+```
+
+### Custom Options
+
+Control conversion behavior with options:
+
+```python
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+from sklearn.ensemble import RandomForestClassifier
+
+# Train model
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+
+# Convert with options
+initial_type = [('float_input', FloatTensorType([None, n_features]))]
+options = {
+    'zipmap': False,  # Disable ZipMap for classification
+    'nocl': False,    # Keep class labels
+    'raw_scores': True  # Output raw scores instead of probabilities
+}
+
+onnx_model = convert_sklearn(
+    model,
+    initial_types=initial_type,
+    target_opset=14,
+    options=options
+)
+```
+
+## Supported Models
+
+### Classification
+- LogisticRegression
+- DecisionTreeClassifier
+- RandomForestClassifier
+- GradientBoostingClassifier
+- SVC (Support Vector Classifier)
+- MLPClassifier
+- KNeighborsClassifier
+
+### Regression
+- LinearRegression
+- Ridge, Lasso, ElasticNet
+- DecisionTreeRegressor
+- RandomForestRegressor
+- GradientBoostingRegressor
+- SVR (Support Vector Regressor)
+- MLPRegressor
+
+### Clustering
+- KMeans
+- DBSCAN
+- AgglomerativeClustering
+
+### Preprocessing
+- StandardScaler, MinMaxScaler
+- OneHotEncoder, LabelEncoder
+- PCA, TruncatedSVD
+- PolynomialFeatures
+- Imputer
+
+## Inference with ONNX Runtime
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Load ONNX model
+session = ort.InferenceSession("rf_classifier.onnx")
+
+# Prepare input
+test_input = np.array([[5.1, 3.5, 1.4, 0.2]], dtype=np.float32)
+
+# Get input/output names
+input_name = session.get_inputs()[0].name
+output_names = [output.name for output in session.get_outputs()]
+
+# Run inference
+results = session.run(output_names, {input_name: test_input})
+
+# Parse results
+label = results[0]  # Predicted class label
+probabilities = results[1]  # Class probabilities
+
+print(f"Predicted class: {label[0]}")
+print(f"Probabilities: {probabilities}")
+```
+
+## Validation
+
+Always validate that the ONNX model produces the same results:
+
+```python
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import onnxruntime as ort
+
+# Original sklearn prediction
+X_test = np.random.randn(10, 4).astype(np.float32)
+sklearn_pred = model.predict(X_test)
+sklearn_proba = model.predict_proba(X_test)
+
+# ONNX prediction
+session = ort.InferenceSession("rf_classifier.onnx")
+input_name = session.get_inputs()[0].name
+onnx_results = session.run(None, {input_name: X_test})
+
+# Compare
+labels_match = np.array_equal(sklearn_pred, onnx_results[0])
+proba_close = np.allclose(sklearn_proba, onnx_results[1], rtol=1e-5)
+
+if labels_match and proba_close:
+    print("✓ Validation successful")
+else:
+    print("✗ Validation failed")
+    print(f"Labels match: {labels_match}")
+    print(f"Probabilities close: {proba_close}")
+```
+
+## Text Processing Example
+
+Convert text processing pipelines:
+
+```python
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import StringTensorType
+
+# Sample text data
+texts = [
+    "This is a positive example",
+    "This is a negative example",
+    "Another positive text",
+    "Another negative text"
+]
+labels = [1, 0, 1, 0]
+
+# Create and train pipeline
+pipeline = Pipeline([
+    ('tfidf', TfidfVectorizer(max_features=100)),
+    ('classifier', LogisticRegression())
+])
+
+pipeline.fit(texts, labels)
+
+# Convert to ONNX
+initial_type = [('input', StringTensorType([None, 1]))]
+onnx_model = convert_sklearn(
+    pipeline,
+    initial_types=initial_type,
+    target_opset=14
+)
+
+with open("text_classifier.onnx", "wb") as f:
+    f.write(onnx_model.SerializeToString())
+```
+
+## Handling Missing Values
+
+```python
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.pipeline import Pipeline
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+
+# Pipeline with imputation
+pipeline = Pipeline([
+    ('imputer', SimpleImputer(strategy='mean')),
+    ('regressor', RandomForestRegressor(n_estimators=10))
+])
+
+pipeline.fit(X_train, y_train)
+
+# Convert
+initial_type = [('float_input', FloatTensorType([None, n_features]))]
+onnx_model = convert_sklearn(
+    pipeline,
+    initial_types=initial_type,
+    target_opset=14
+)
+```
+
+## Best Practices
+
+1. **Specify batch dimension as None**: Allow variable batch sizes with `[None, n_features]`
+2. **Use pipelines**: Convert entire workflows including preprocessing
+3. **Validate outputs**: Always compare sklearn and ONNX predictions
+4. **Set target_opset**: Use opset 14 or higher for compatibility
+5. **Test edge cases**: Validate with various input types and ranges
+6. **Handle data types**: Ensure input data types match the initial_types specification
+7. **Disable ZipMap for production**: Set `{'zipmap': False}` for classification models
+
+## Troubleshooting
+
+### Common Issues
+
+**"Operator not supported"**: Check skl2onnx documentation for supported operators
+
+```bash
+pip install --upgrade skl2onnx
+```
+
+**Shape mismatch errors**: Verify that initial_types matches your model's expected input
+
+**Type conversion errors**: Ensure input data is the correct type (e.g., float32)
+
+## Performance Comparison
+
+```python
+import time
+import numpy as np
+
+# Benchmark sklearn
+X_test = np.random.randn(1000, 4).astype(np.float32)
+
+start = time.time()
+for _ in range(100):
+    _ = model.predict(X_test)
+sklearn_time = time.time() - start
+
+# Benchmark ONNX Runtime
+session = ort.InferenceSession("rf_classifier.onnx")
+input_name = session.get_inputs()[0].name
+
+start = time.time()
+for _ in range(100):
+    _ = session.run(None, {input_name: X_test})
+onnx_time = time.time() - start
+
+print(f"scikit-learn: {sklearn_time:.3f}s")
+print(f"ONNX Runtime: {onnx_time:.3f}s")
+print(f"Speedup: {sklearn_time/onnx_time:.2f}x")
+```
+
+## Next Steps
+
+- [Optimize ONNX models](/inference/model-optimization)
+- [Deploy with ONNX Runtime](/deployment/python-api)
+- [Batch processing strategies](/inference/model-optimization)

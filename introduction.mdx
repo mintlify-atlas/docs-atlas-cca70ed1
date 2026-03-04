@@ -1,0 +1,253 @@
+---
+title: Introduction
+description: High-performance ML inferencing and training accelerator for deep learning models
+mode: custom
+---
+
+<div className="min-h-screen dark:bg-[#0f1117] bg-white">
+  {/* Hero Section */}
+  <div className="relative overflow-hidden dark:bg-gradient-to-b dark:from-[#1a1d27] dark:to-[#0f1117] bg-gradient-to-b from-gray-50 to-white py-20 px-4">
+    <div className="max-w-7xl mx-auto">
+      <div className="text-center">
+        <h1 className="text-5xl md:text-6xl font-bold dark:text-gray-100 text-gray-900 mb-6">
+          ONNX Runtime Documentation
+        </h1>
+        <p className="text-xl md:text-2xl dark:text-gray-400 text-gray-600 max-w-3xl mx-auto mb-10">
+          Cross-platform, high-performance ML inferencing and training accelerator for deep learning models from PyTorch, TensorFlow, and more
+        </p>
+        <div className="flex flex-wrap justify-center gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-8 py-3.5 text-base font-semibold rounded-lg bg-[#646464] text-white hover:bg-[#424242] transition-colors no-underline"
+          >
+            Get Started
+            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a 
+            href="/api/python/inference-session" 
+            className="inline-flex items-center px-8 py-3.5 text-base font-semibold rounded-lg dark:border-gray-700 dark:bg-[#1a1d27] dark:text-gray-100 dark:hover:bg-[#242838] border border-gray-300 bg-white text-gray-900 hover:bg-gray-50 transition-colors no-underline"
+          >
+            API Reference
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Quick Start Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <h2 className="text-3xl font-semibold dark:text-white text-gray-900 mb-4">
+      Quick start
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+      Get up and running with ONNX Runtime in minutes
+    </p>
+    
+    <Steps>
+      <Step title="Install ONNX Runtime">
+        Install the package for your platform and language. Python users can install via pip:
+        
+        ```bash
+        pip install onnxruntime
+        ```
+        
+        For GPU acceleration with CUDA:
+        
+        ```bash
+        pip install onnxruntime-gpu
+        ```
+      </Step>
+      
+      <Step title="Load your model">
+        Create an inference session with your ONNX model:
+        
+        ```python
+        import onnxruntime as ort
+        
+        # Create inference session
+        session = ort.InferenceSession("model.onnx")
+        ```
+      </Step>
+      
+      <Step title="Run inference">
+        Prepare your input and run inference:
+        
+        ```python
+        import numpy as np
+        
+        # Prepare input
+        input_name = session.get_inputs()[0].name
+        input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+        
+        # Run inference
+        outputs = session.run(None, {input_name: input_data})
+        ```
+      </Step>
+    </Steps>
+  </div>
+
+  {/* Key Features Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <h2 className="text-3xl font-semibold dark:text-white text-gray-900 mb-4">
+      Key features
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+      Everything you need for production ML deployment
+    </p>
+    
+    <CardGroup cols={2}>
+      <Card title="Cross-platform" icon="globe" href="/concepts/overview">
+        Deploy on Windows, Linux, macOS, iOS, Android, and web browsers with consistent APIs
+      </Card>
+      <Card title="Hardware acceleration" icon="microchip" href="/execution-providers/overview">
+        Leverage CUDA, TensorRT, DirectML, CoreML, OpenVINO, and more for optimal performance
+      </Card>
+      <Card title="Multi-language support" icon="code" href="/inference/overview">
+        Use Python, C/C++, C#, Java, and JavaScript with idiomatic APIs for each language
+      </Card>
+      <Card title="Model optimization" icon="bolt" href="/performance/tuning">
+        Automatic graph optimizations and quantization for faster inference
+      </Card>
+      <Card title="Training acceleration" icon="rocket" href="/training/overview">
+        Speed up PyTorch model training with ORTModule integration
+      </Card>
+      <Card title="Framework conversion" icon="arrows-rotate" href="/model-conversion/pytorch">
+        Convert models from PyTorch, TensorFlow, scikit-learn, and more
+      </Card>
+    </CardGroup>
+  </div>
+
+  {/* Explore by Topic Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <h2 className="text-3xl font-semibold dark:text-white text-gray-900 mb-4">
+      Explore by topic
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+      Deep dive into specific areas of ONNX Runtime
+    </p>
+    
+    <CardGroup cols={3}>
+      <Card title="Core concepts" icon="book-open" href="/concepts/overview">
+        Understand ONNX format, execution providers, and sessions
+      </Card>
+      <Card title="Inference" icon="play" href="/inference/overview">
+        Run models for predictions across platforms and languages
+      </Card>
+      <Card title="Training" icon="graduation-cap" href="/training/overview">
+        Accelerate model training with ORTModule
+      </Card>
+      <Card title="Execution providers" icon="server" href="/execution-providers/overview">
+        Hardware acceleration options for CPUs, GPUs, and specialized chips
+      </Card>
+      <Card title="Performance" icon="gauge-high" href="/performance/tuning">
+        Optimize inference speed and memory usage
+      </Card>
+      <Card title="Model conversion" icon="shuffle" href="/model-conversion/pytorch">
+        Convert models from PyTorch, TensorFlow, and scikit-learn
+      </Card>
+    </CardGroup>
+  </div>
+
+  {/* API Reference Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <h2 className="text-3xl font-semibold dark:text-white text-gray-900 mb-4">
+      API reference
+    </h2>
+    <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+      Complete API documentation for all supported languages
+    </p>
+    
+    <CardGroup cols={2}>
+      <Card title="Python API" icon="python" href="/api/python/inference-session">
+        InferenceSession, SessionOptions, quantization, and transformers
+      </Card>
+      <Card title="C/C++ API" icon="c" href="/api/c-cpp/overview">
+        OrtApi, sessions, tensors, and execution providers
+      </Card>
+      <Card title="C# API" icon="hashtag" href="/api/csharp/inference-session">
+        InferenceSession, SessionOptions, and tensor operations
+      </Card>
+      <Card title="Java API" icon="java" href="/api/java/overview">
+        OrtSession, OrtEnvironment, and inference APIs
+      </Card>
+      <Card title="JavaScript API" icon="js" href="/api/javascript/inference-session">
+        Web and Node.js inference with WebAssembly backend
+      </Card>
+    </CardGroup>
+  </div>
+
+  {/* Community Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="dark:bg-[#1a1d27] bg-gray-50 rounded-2xl p-8 md:p-12 dark:border-[#27272a] border border-gray-200">
+      <h2 className="text-3xl font-semibold dark:text-white text-gray-900 mb-4">
+        Join the community
+      </h2>
+      <p className="text-base dark:text-gray-400 text-gray-600 mb-8">
+        Connect with other ONNX Runtime developers and get support
+      </p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <a 
+          href="https://github.com/microsoft/onnxruntime" 
+          className="flex items-center p-4 dark:bg-[#242838] bg-white rounded-lg dark:border-[#27272a] border border-gray-200 dark:hover:border-[#646464] hover:border-[#646464] transition-colors no-underline group"
+        >
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#646464] flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h3 className="text-base font-semibold dark:text-white text-gray-900 group-hover:text-[#646464] transition-colors">
+              GitHub
+            </h3>
+            <p className="text-sm dark:text-gray-400 text-gray-600">
+              Star the repo and contribute
+            </p>
+          </div>
+        </a>
+        
+        <a 
+          href="https://github.com/microsoft/onnxruntime/discussions" 
+          className="flex items-center p-4 dark:bg-[#242838] bg-white rounded-lg dark:border-[#27272a] border border-gray-200 dark:hover:border-[#646464] hover:border-[#646464] transition-colors no-underline group"
+        >
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#646464] flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h3 className="text-base font-semibold dark:text-white text-gray-900 group-hover:text-[#646464] transition-colors">
+              Discussions
+            </h3>
+            <p className="text-sm dark:text-gray-400 text-gray-600">
+              Ask questions and share ideas
+            </p>
+          </div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {/* Final CTA */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="text-center dark:bg-gradient-to-r dark:from-[#1a1d27] dark:to-[#242838] bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-12 dark:border-[#27272a] border border-gray-200">
+      <h2 className="text-3xl font-bold dark:text-white text-gray-900 mb-4">
+        Ready to accelerate your ML models?
+      </h2>
+      <p className="text-lg dark:text-gray-400 text-gray-600 max-w-2xl mx-auto mb-8">
+        Start deploying high-performance models across platforms with ONNX Runtime
+      </p>
+      <a 
+        href="/installation" 
+        className="inline-flex items-center px-8 py-3.5 text-base font-semibold rounded-lg bg-[#646464] text-white hover:bg-[#424242] transition-colors no-underline"
+      >
+        Install ONNX Runtime
+        <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>

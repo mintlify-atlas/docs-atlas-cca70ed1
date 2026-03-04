@@ -1,0 +1,533 @@
+---
+title: WebAssembly Deployment
+description: Deploy ONNX Runtime models in browsers and web applications using WebAssembly
+---
+
+ONNX Runtime Web brings high-performance machine learning inference to web browsers using WebAssembly and WebGPU.
+
+## Overview
+
+ONNX Runtime Web supports multiple execution backends:
+
+- **WebAssembly (WASM)**: CPU execution with SIMD support
+- **WebGPU**: GPU acceleration for modern browsers
+- **WebGL**: Legacy GPU support
+- **WebNN**: Web Neural Network API for hardware acceleration
+
+## Installation
+
+### Using NPM
+
+```bash
+npm install onnxruntime-web
+```
+
+### Using CDN
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+```
+
+## Basic Usage
+
+### Creating an Inference Session
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+// Create session
+const session = await ort.InferenceSession.create('./model.onnx');
+
+// Prepare input
+const inputTensor = new ort.Tensor('float32', 
+  new Float32Array([1.0, 2.0, 3.0]), 
+  [1, 3]
+);
+
+// Run inference
+const feeds = { input: inputTensor };
+const results = await session.run(feeds);
+
+// Get output
+const output = results.output.data;
+console.log('Output:', output);
+```
+
+### Loading Models
+
+#### From URL
+
+```javascript
+const session = await ort.InferenceSession.create(
+  'https://example.com/model.onnx'
+);
+```
+
+#### From ArrayBuffer
+
+```javascript
+const response = await fetch('./model.onnx');
+const arrayBuffer = await response.arrayBuffer();
+const session = await ort.InferenceSession.create(arrayBuffer);
+```
+
+#### From Uint8Array
+
+```javascript
+const modelData = new Uint8Array(arrayBuffer);
+const session = await ort.InferenceSession.create(modelData);
+```
+
+## Execution Providers
+
+### WebAssembly (CPU)
+
+Default CPU execution:
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: ['wasm']
+});
+```
+
+#### SIMD Support
+
+Enable SIMD for better performance:
+
+```javascript
+ort.env.wasm.simd = true;
+ort.env.wasm.numThreads = 4;
+
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: ['wasm']
+});
+```
+
+### WebGPU
+
+Modern GPU acceleration:
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: ['webgpu']
+});
+```
+
+#### WebGPU Options
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: [
+    {
+      name: 'webgpu',
+      deviceType: 'gpu',
+      powerPreference: 'high-performance',
+      enableGraphCapture: true
+    }
+  ]
+});
+```
+
+### WebGL
+
+Legacy GPU support:
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: ['webgl']
+});
+```
+
+#### WebGL Context Options
+
+```javascript
+ort.env.webgl.contextId = 'webgl2';
+ort.env.webgl.matmulMaxBatchSize = 16;
+ort.env.webgl.textureCacheMode = 'full';
+
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: ['webgl']
+});
+```
+
+### WebNN
+
+Hardware acceleration via Web Neural Network API:
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: [
+    {
+      name: 'webnn',
+      deviceType: 'gpu',
+      powerPreference: 'default'
+    }
+  ]
+});
+```
+
+## Session Options
+
+### Graph Optimization
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  graphOptimizationLevel: 'all', // 'disabled' | 'basic' | 'extended' | 'all'
+  executionMode: 'sequential', // 'sequential' | 'parallel'
+  enableCpuMemArena: true,
+  enableMemPattern: true
+});
+```
+
+### Logging
+
+```javascript
+ort.env.logLevel = 'verbose';
+
+const session = await ort.InferenceSession.create('./model.onnx', {
+  logId: 'my-model',
+  logSeverityLevel: 0 // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
+});
+```
+
+### Multi-Threading
+
+```javascript
+ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+
+const session = await ort.InferenceSession.create('./model.onnx', {
+  intraOpNumThreads: 4,
+  interOpNumThreads: 1
+});
+```
+
+## Working with Tensors
+
+### Creating Tensors
+
+```javascript
+// Float32 tensor
+const floatTensor = new ort.Tensor('float32', 
+  new Float32Array([1, 2, 3, 4]), 
+  [2, 2]
+);
+
+// Int32 tensor
+const intTensor = new ort.Tensor('int32', 
+  new Int32Array([1, 2, 3]), 
+  [1, 3]
+);
+
+// String tensor
+const stringTensor = new ort.Tensor('string', 
+  ['hello', 'world'], 
+  [2]
+);
+```
+
+### Supported Data Types
+
+- `float32`, `float64`
+- `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`
+- `int64`, `uint64` (BigInt)
+- `bool`, `string`
+- `float16` (Uint16Array)
+
+### Tensor from Image
+
+```javascript
+async function imageToTensor(imageElement) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  canvas.width = 224;
+  canvas.height = 224;
+  ctx.drawImage(imageElement, 0, 0, 224, 224);
+  
+  const imageData = ctx.getImageData(0, 0, 224, 224);
+  const pixels = imageData.data;
+  
+  // Convert to CHW format
+  const red = [], green = [], blue = [];
+  for (let i = 0; i < pixels.length; i += 4) {
+    red.push(pixels[i] / 255);
+    green.push(pixels[i + 1] / 255);
+    blue.push(pixels[i + 2] / 255);
+  }
+  
+  const inputData = Float32Array.from([...red, ...green, ...blue]);
+  return new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+}
+```
+
+## Advanced Features
+
+### Pre-allocated Outputs
+
+```javascript
+const outputTensor = new ort.Tensor('float32', 
+  new Float32Array(1000), 
+  [1, 1000]
+);
+
+const results = await session.run(
+  { input: inputTensor },
+  { output: outputTensor }
+);
+```
+
+### Model Metadata
+
+```javascript
+const inputNames = session.inputNames;
+const outputNames = session.outputNames;
+
+console.log('Inputs:', inputNames);
+console.log('Outputs:', outputNames);
+```
+
+### Run Options
+
+```javascript
+const runOptions = {
+  logSeverityLevel: 2,
+  logVerbosityLevel: 0,
+  tag: 'inference-1'
+};
+
+const results = await session.run(feeds, {}, runOptions);
+```
+
+## Performance Optimization
+
+### Model Optimization
+
+1. **Use ORT format**: Convert to `.ort` for faster loading
+2. **Quantization**: Use INT8 quantization
+3. **Graph optimization**: Enable 'all' optimization level
+
+### WASM Configuration
+
+```javascript
+// Set WASM paths for web workers
+ort.env.wasm.wasmPaths = {
+  'ort-wasm-simd-threaded.wasm': '/wasm/',
+  'ort-wasm-simd.wasm': '/wasm/',
+  'ort-wasm.wasm': '/wasm/'
+};
+
+// Enable proxy for multi-threading
+ort.env.wasm.proxy = true;
+```
+
+### WebGPU Optimizations
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: [
+    {
+      name: 'webgpu',
+      preferredLayout: 'NHWC', // or 'NCHW'
+      enableGraphCapture: true
+    }
+  ],
+  enableMemPattern: true,
+  graphOptimizationLevel: 'all'
+});
+```
+
+### Caching Sessions
+
+```javascript
+const sessionCache = new Map();
+
+async function getSession(modelPath) {
+  if (!sessionCache.has(modelPath)) {
+    const session = await ort.InferenceSession.create(modelPath);
+    sessionCache.set(modelPath, session);
+  }
+  return sessionCache.get(modelPath);
+}
+```
+
+## Browser Compatibility
+
+### Feature Detection
+
+```javascript
+function checkSupport() {
+  const support = {
+    wasm: typeof WebAssembly !== 'undefined',
+    simd: false,
+    threads: false,
+    webgpu: 'gpu' in navigator,
+    webgl: !!document.createElement('canvas').getContext('webgl2')
+  };
+  
+  // Check SIMD support
+  try {
+    const simdTest = WebAssembly.validate(
+      new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])
+    );
+    support.simd = simdTest;
+  } catch (e) {}
+  
+  return support;
+}
+
+const support = checkSupport();
+console.log('Browser support:', support);
+```
+
+### Fallback Strategy
+
+```javascript
+const providers = [];
+
+if ('gpu' in navigator) {
+  providers.push('webgpu');
+} else if (checkWebGLSupport()) {
+  providers.push('webgl');
+}
+providers.push('wasm'); // Always include CPU fallback
+
+const session = await ort.InferenceSession.create('./model.onnx', {
+  executionProviders: providers
+});
+```
+
+## Build and Deployment
+
+### Webpack Configuration
+
+```javascript
+// webpack.config.js
+module.exports = {
+  // ... other config
+  resolve: {
+    fallback: {
+      "fs": false,
+      "path": false
+    }
+  },
+  module: {
+    rules: [
+      {
+        test: /\.wasm$/,
+        type: 'asset/resource'
+      }
+    ]
+  }
+};
+```
+
+### Serving WASM Files
+
+Ensure proper MIME types:
+
+```
+# .htaccess
+AddType application/wasm .wasm
+```
+
+### Cross-Origin Isolation
+
+For multi-threading support:
+
+```
+Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Opener-Policy: same-origin
+```
+
+## Example: Image Classification
+
+```javascript
+import * as ort from 'onnxruntime-web';
+
+class ImageClassifier {
+  async initialize() {
+    this.session = await ort.InferenceSession.create('./resnet50.onnx', {
+      executionProviders: ['webgpu', 'wasm']
+    });
+  }
+  
+  async classify(imageElement) {
+    // Preprocess image
+    const tensor = await this.preprocessImage(imageElement);
+    
+    // Run inference
+    const results = await this.session.run({ input: tensor });
+    
+    // Postprocess
+    const predictions = this.postprocess(results.output);
+    return predictions;
+  }
+  
+  async preprocessImage(img) {
+    // Resize and normalize
+    const canvas = document.createElement('canvas');
+    canvas.width = 224;
+    canvas.height = 224;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, 224, 224);
+    
+    const imageData = ctx.getImageData(0, 0, 224, 224);
+    const pixels = imageData.data;
+    
+    const mean = [0.485, 0.456, 0.406];
+    const std = [0.229, 0.224, 0.225];
+    const data = new Float32Array(3 * 224 * 224);
+    
+    for (let i = 0; i < 224 * 224; i++) {
+      data[i] = (pixels[i * 4] / 255 - mean[0]) / std[0];
+      data[224 * 224 + i] = (pixels[i * 4 + 1] / 255 - mean[1]) / std[1];
+      data[224 * 224 * 2 + i] = (pixels[i * 4 + 2] / 255 - mean[2]) / std[2];
+    }
+    
+    return new ort.Tensor('float32', data, [1, 3, 224, 224]);
+  }
+  
+  postprocess(output) {
+    const predictions = Array.from(output.data)
+      .map((prob, idx) => ({ class: idx, probability: prob }))
+      .sort((a, b) => b.probability - a.probability)
+      .slice(0, 5);
+    
+    return predictions;
+  }
+}
+
+// Usage
+const classifier = new ImageClassifier();
+await classifier.initialize();
+
+const img = document.getElementById('image');
+const results = await classifier.classify(img);
+console.log('Top predictions:', results);
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**WASM files not loading:**
+- Check file paths in `ort.env.wasm.wasmPaths`
+- Verify server MIME type for `.wasm` files
+- Check browser console for CORS errors
+
+**Memory errors:**
+- Reduce model size or use quantization
+- Enable memory pattern optimization
+- Dispose sessions when not needed
+
+**WebGPU not available:**
+- Check browser support (Chrome 94+, Edge 94+)
+- Ensure GPU is available
+- Fallback to WebGL or WASM
+
+## Resources
+
+- [ONNX Runtime Web GitHub](https://github.com/microsoft/onnxruntime/tree/main/js/web)
+- [WebAssembly Documentation](https://webassembly.org/)
+- [WebGPU Specification](https://www.w3.org/TR/webgpu/)
+- [Browser Examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)

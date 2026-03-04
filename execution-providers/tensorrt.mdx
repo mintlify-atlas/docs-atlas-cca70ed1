@@ -1,0 +1,471 @@
+---
+title: TensorRT Execution Provider
+description: Achieve maximum performance on NVIDIA GPUs with the TensorRT Execution Provider
+---
+
+# TensorRT Execution Provider
+
+The TensorRT Execution Provider delivers maximum inference performance on NVIDIA GPUs by leveraging NVIDIA TensorRT, a high-performance deep learning inference optimizer and runtime.
+
+## When to Use TensorRT EP
+
+Use the TensorRT Execution Provider when:
+
+- You need maximum performance on NVIDIA GPUs
+- Your model is finalized and ready for production
+- You can tolerate longer initial load times for faster inference
+- You want to use FP16 or INT8 precision for better performance
+- Your deployment uses fixed or limited input shapes
+
+## Key Features
+
+- **Advanced Optimizations**: Layer fusion, kernel auto-tuning, precision calibration
+- **Mixed Precision**: FP32, FP16, INT8, BF16 support
+- **Dynamic Shapes**: Handle variable input shapes with optimization profiles
+- **Engine Caching**: Save optimized engines to disk for faster startup
+- **DLA Support**: Offload to Deep Learning Accelerator (Jetson, Drive platforms)
+
+## Prerequisites
+
+### Hardware Requirements
+
+- NVIDIA GPU with compute capability 6.0 or higher
+- Recommended: 6GB+ GPU memory
+
+### Software Requirements
+
+- **TensorRT**: 8.6.x or 10.x
+- **CUDA Toolkit**: 11.8 or 12.x
+- **cuDNN**: 8.x or 9.x
+- **ONNX Runtime TensorRT package**
+
+## Installation
+
+### Python
+
+```bash
+# Install ONNX Runtime with GPU support
+pip install onnxruntime-gpu
+
+# TensorRT must be installed separately
+# Download from https://developer.nvidia.com/tensorrt
+# Or use pip for TensorRT OSS
+pip install tensorrt
+
+# Verify TensorRT is available
+python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+# Should include 'TensorrtExecutionProvider'
+```
+
+### Docker (Recommended)
+
+```bash
+# Use official NVIDIA TensorRT container with ONNX Runtime
+docker pull nvcr.io/nvidia/tensorrt:24.10-py3
+
+# Or build with ONNX Runtime
+docker run --gpus all -it nvcr.io/nvidia/tensorrt:24.10-py3
+pip install onnxruntime-gpu
+```
+
+### C++
+
+Download the TensorRT-enabled build from [ONNX Runtime releases](https://github.com/microsoft/onnxruntime/releases).
+
+## Basic Usage
+
+### Python
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Create session with TensorRT provider
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+# First run will be slower (engine building)
+print("Building TensorRT engine...")
+input_name = session.get_inputs()[0].name
+x = np.random.randn(1, 3, 224, 224).astype(np.float32)
+results = session.run(None, {input_name: x})
+
+# Subsequent runs use cached engine (much faster)
+results = session.run(None, {input_name: x})
+```
+
+### C++
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "TensorRTExample");
+Ort::SessionOptions session_options;
+
+// Configure TensorRT provider
+OrtTensorRTProviderOptionsV2* tensorrt_options = nullptr;
+Ort::ThrowOnError(OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateTensorRTProviderOptions(&tensorrt_options));
+
+std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_engine_cache_enable"};
+std::vector<const char*> values{"0", "1", "1"};
+
+Ort::ThrowOnError(OrtGetApiBase()->GetApi(ORT_API_VERSION)->
+    UpdateTensorRTProviderOptions(tensorrt_options, keys.data(), values.data(), 3));
+
+session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+
+Ort::Session session(env, "model.onnx", session_options);
+```
+
+### C#
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+var sessionOptions = new SessionOptions();
+sessionOptions.AppendExecutionProvider_Tensorrt(0);
+
+using var session = new InferenceSession("model.onnx", sessionOptions);
+```
+
+## Configuration Options
+
+### Python Provider Options
+
+```python
+import onnxruntime as ort
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ('TensorrtExecutionProvider', {
+            # Basic settings
+            'device_id': 0,
+            'trt_max_workspace_size': 4 * 1024 * 1024 * 1024,  # 4GB
+            
+            # Precision settings
+            'trt_fp16_enable': True,
+            'trt_bf16_enable': False,
+            'trt_int8_enable': False,
+            'trt_int8_calibration_table_name': '',
+            
+            # Engine caching
+            'trt_engine_cache_enable': True,
+            'trt_engine_cache_path': './trt_engines',
+            'trt_engine_cache_prefix': 'model',
+            
+            # Optimization settings
+            'trt_builder_optimization_level': 3,  # 0-5, default 3
+            'trt_max_partition_iterations': 1000,
+            'trt_min_subgraph_size': 1,
+            
+            # Performance tuning
+            'trt_timing_cache_enable': True,
+            'trt_force_sequential_engine_build': False,
+            'trt_context_memory_sharing_enable': True,
+            'trt_auxiliary_streams': -1,  # Auto
+            
+            # Dynamic shapes
+            'trt_profile_min_shapes': 'input:1x3x224x224',
+            'trt_profile_max_shapes': 'input:32x3x224x224',
+            'trt_profile_opt_shapes': 'input:8x3x224x224',
+        }),
+        'CUDAExecutionProvider',
+        'CPUExecutionProvider'
+    ]
+)
+```
+
+## Key Configuration Parameters
+
+### Precision Modes
+
+#### FP16 (Half Precision)
+
+Best balance of speed and accuracy:
+
+```python
+'trt_fp16_enable': True
+```
+
+**Performance**: 2-4x faster than FP32
+**Accuracy**: Minimal impact for most models
+**Hardware**: All NVIDIA GPUs since Pascal (2016)
+
+#### INT8 (8-bit Integer)
+
+Maximum performance with calibration:
+
+```python
+'trt_int8_enable': True,
+'trt_int8_calibration_table_name': 'calibration.cache'
+```
+
+**Performance**: 4-8x faster than FP32
+**Accuracy**: Requires calibration, 1-3% accuracy drop typical
+**Hardware**: All NVIDIA GPUs since Pascal
+
+#### BF16 (Brain Float16)
+
+For NVIDIA Ampere and newer:
+
+```python
+'trt_bf16_enable': True
+```
+
+**Performance**: Similar to FP16
+**Accuracy**: Better than FP16 for some models
+**Hardware**: Ampere (A100, RTX 30xx) and newer
+
+### Engine Caching
+
+Save optimized engines to avoid rebuild:
+
+```python
+'trt_engine_cache_enable': True,
+'trt_engine_cache_path': './trt_engines',
+'trt_engine_cache_prefix': 'mymodel',  # Creates mymodel_<hash>.engine
+```
+
+**Benefits**:
+- Dramatically faster session creation (seconds vs minutes)
+- Consistent performance across runs
+- Required for production deployments
+
+### Dynamic Shapes
+
+Optimize for variable input sizes:
+
+```python
+# Single input
+'trt_profile_min_shapes': 'input:1x3x224x224',
+'trt_profile_opt_shapes': 'input:8x3x224x224',   # Most common
+'trt_profile_max_shapes': 'input:32x3x224x224',
+
+# Multiple inputs
+'trt_profile_min_shapes': 'input1:1x3x224x224,input2:1x128',
+'trt_profile_opt_shapes': 'input1:8x3x224x224,input2:8x128',
+'trt_profile_max_shapes': 'input1:32x3x224x224,input2:32x128',
+```
+
+### Builder Optimization Level
+
+Control build time vs runtime performance trade-off:
+
+```python
+# Level 0-2: Fast build, lower performance
+'trt_builder_optimization_level': 2,
+
+# Level 3: Default, balanced
+'trt_builder_optimization_level': 3,
+
+# Level 4-5: Longer build, best performance
+'trt_builder_optimization_level': 5,
+```
+
+## Performance Optimization
+
+### INT8 Calibration
+
+For INT8 quantization, you need a calibration cache:
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Step 1: Generate calibration cache
+# Use representative data (100-1000 samples)
+calibration_data = load_calibration_dataset()  # Your data
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'TensorrtExecutionProvider', {
+            'trt_int8_enable': True,
+            'trt_int8_calibration_table_name': 'calibration.cache',
+        }
+    )]
+)
+
+# Run calibration data through model
+for data in calibration_data:
+    session.run(None, {input_name: data})
+
+# Step 2: Use cached calibration for deployment
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'TensorrtExecutionProvider', {
+            'trt_int8_enable': True,
+            'trt_int8_calibration_table_name': 'calibration.cache',
+            'trt_engine_cache_enable': True,
+        }
+    )]
+)
+```
+
+### Timing Cache
+
+Speed up engine building:
+
+```python
+'trt_timing_cache_enable': True,
+'trt_timing_cache_path': './timing_cache',
+```
+
+### Context Memory Sharing
+
+Reduce memory usage with multiple engines:
+
+```python
+'trt_context_memory_sharing_enable': True,
+```
+
+### Auxiliary Streams
+
+Control parallelism:
+
+```python
+'trt_auxiliary_streams': -1,  # Auto (default)
+'trt_auxiliary_streams': 0,   # Optimal memory usage
+'trt_auxiliary_streams': 2,   # More parallelism
+```
+
+## Production Deployment
+
+### Engine Serialization
+
+Save and load optimized engines:
+
+```python
+# Build and cache engine
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'TensorrtExecutionProvider', {
+            'trt_engine_cache_enable': True,
+            'trt_engine_cache_path': './production_engines',
+            'trt_fp16_enable': True,
+        }
+    )]
+)
+
+# First run builds and caches engine
+session.run(None, {input_name: dummy_input})
+
+# Distribute engine files with application
+# Next session creation is fast (loads from cache)
+```
+
+### EP Context Model
+
+Embed TensorRT engine in ONNX model:
+
+```python
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'TensorrtExecutionProvider', {
+            'trt_dump_ep_context_model': True,
+            'trt_ep_context_file_path': './model_trt.onnx',
+            'trt_ep_context_embed_mode': 1,  # Embed engine in model
+        }
+    )]
+)
+
+# Run once to generate context model
+session.run(None, {input_name: dummy_input})
+
+# Deploy model_trt.onnx - includes optimized engine
+```
+
+## Platform Support
+
+| Platform | Support | Notes |
+|----------|---------|-------|
+| Linux x64 | ✅ Full | Best support |
+| Windows x64 | ✅ Full | Full features |
+| Linux ARM64 | ✅ Full | Jetson, AWS Graviton |
+| Windows ARM64 | ❌ No | Not supported |
+| macOS | ❌ No | NVIDIA GPU required |
+
+## Supported Hardware
+
+### Data Center
+- H100 (Hopper) - Best performance
+- A100, A40, A30, A10 (Ampere)
+- V100 (Volta)
+- T4 (Turing)
+
+### Desktop
+- RTX 40 Series (Ada Lovelace)
+- RTX 30 Series (Ampere)
+- RTX 20 Series (Turing)
+- GTX 16 Series (Turing)
+
+### Edge/Embedded
+- Jetson AGX Orin (with DLA)
+- Jetson Orin Nano/NX
+- Jetson Xavier AGX/NX (with DLA)
+- NVIDIA Drive (with DLA)
+
+## Troubleshooting
+
+### Engine Build Failures
+
+```python
+# Enable detailed logging
+import onnxruntime as ort
+ort.set_default_logger_severity(0)  # Verbose
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'TensorrtExecutionProvider', {
+            'trt_detailed_build_log': True,
+        }
+    )]
+)
+```
+
+### Unsupported Operators
+
+Some operators fall back to CUDA:
+
+```python
+# Check provider assignment
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+)
+
+print(session.get_providers())  # ['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+# Some nodes may use CUDA if TensorRT doesn't support them
+```
+
+### Precision Issues
+
+If FP16/INT8 causes accuracy problems:
+
+```python
+# Force specific layers to FP32
+'trt_layer_norm_fp32_fallback': True,
+```
+
+## Performance Comparison
+
+Typical speedup over CPU (varies by model):
+
+| Precision | Speedup | Accuracy Impact |
+|-----------|---------|----------------|
+| FP32 | 5-10x | None |
+| FP16 | 10-20x | Minimal (less than 0.5%) |
+| INT8 | 20-40x | Small (1-3%) with calibration |
+
+## Next Steps
+
+- Compare with [CUDA Execution Provider](/execution-providers/cuda)
+- Learn about [model optimization](/inference/model-optimization)
+- Explore [performance tuning](/performance/tuning)

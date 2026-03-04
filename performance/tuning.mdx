@@ -1,0 +1,330 @@
+---
+title: Performance Tuning Guide
+description: Comprehensive guide to tuning ONNX Runtime for optimal performance including session options, execution providers, and optimization techniques
+---
+
+## Overview
+
+ONNX Runtime provides extensive performance tuning options to optimize model inference and training. This guide covers the key configuration options and best practices for achieving optimal performance.
+
+## Session Configuration
+
+### Creating an Optimized Session
+
+Use `SessionOptions` to configure performance settings:
+
+```python
+import onnxruntime as ort
+
+# Create session options
+session_options = ort.SessionOptions()
+
+# Set graph optimization level
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+# Enable profiling
+session_options.enable_profiling = True
+
+# Create inference session
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+### Graph Optimization Levels
+
+ONNX Runtime provides different optimization levels:
+
+- **ORT_DISABLE_ALL**: No optimizations applied
+- **ORT_ENABLE_BASIC**: Basic optimizations like constant folding, redundant node elimination
+- **ORT_ENABLE_EXTENDED**: Extended optimizations including node fusion, layout optimizations
+- **ORT_ENABLE_ALL**: All available optimizations (recommended for production)
+
+```cpp
+// C++ API
+SessionOptions session_options;
+session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+```
+
+## Execution Providers
+
+### Selecting Execution Providers
+
+Execution providers enable hardware acceleration:
+
+```python
+# CUDA GPU acceleration
+session_options.append_execution_provider('CUDAExecutionProvider', {
+    'device_id': 0,
+    'arena_extend_strategy': 'kNextPowerOfTwo',
+    'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+    'cudnn_conv_algo_search': 'EXHAUSTIVE',
+})
+
+# TensorRT acceleration
+session_options.append_execution_provider('TensorrtExecutionProvider', {
+    'device_id': 0,
+    'trt_max_workspace_size': 2147483648,
+    'trt_fp16_enable': True,
+})
+
+# CPU fallback
+session_options.append_execution_provider('CPUExecutionProvider')
+```
+
+### Common Execution Provider Options
+
+#### CUDA Provider
+
+- `device_id`: GPU device ID
+- `arena_extend_strategy`: Memory allocation strategy
+- `gpu_mem_limit`: Maximum GPU memory usage
+- `cudnn_conv_algo_search`: Algorithm selection (DEFAULT, EXHAUSTIVE, HEURISTIC)
+
+#### TensorRT Provider
+
+- `trt_fp16_enable`: Enable FP16 precision
+- `trt_int8_enable`: Enable INT8 quantization
+- `trt_max_workspace_size`: Maximum workspace size for TensorRT
+- `trt_engine_cache_enable`: Cache compiled engines
+
+## Intra-Op and Inter-Op Parallelism
+
+### Thread Configuration
+
+Control parallelism for optimal CPU utilization:
+
+```python
+# Intra-op threads: parallelism within ops
+session_options.intra_op_num_threads = 4
+
+# Inter-op threads: parallelism between ops
+session_options.inter_op_num_threads = 2
+
+# Execution mode
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+# or
+session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+### Execution Modes
+
+- **ORT_SEQUENTIAL**: Operators are executed sequentially (lower overhead)
+- **ORT_PARALLEL**: Operators can be executed in parallel (better for models with independent ops)
+
+## Model Optimization
+
+### Offline Optimization
+
+Save optimized models for faster startup:
+
+```python
+session_options.optimized_model_filepath = "optimized_model.onnx"
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+### Optimization Configuration
+
+Fine-tune specific optimizations:
+
+```python
+# Disable specific optimizations
+session_options.add_free_dimension_override_by_name("batch_size", 1)
+
+# Enable model serialization after optimization
+session_options.optimized_model_filepath = "optimized.onnx"
+```
+
+## Memory Management
+
+### Memory Pattern Optimization
+
+```python
+# Enable memory pattern optimization
+session_options.enable_mem_pattern = True
+
+# Enable CPU memory arena
+session_options.enable_cpu_mem_arena = True
+```
+
+### Arena Configuration
+
+```cpp
+// C++ API - Configure memory arena
+OrtArenaCfg* arena_cfg;
+CreateArenaCfg(0, -1, -1, -1, &arena_cfg);
+CreateSessionOptionsWithArenaCfg(session_options, arena_cfg);
+```
+
+## I/O Binding for Zero-Copy
+
+Reduce memory copies with I/O binding:
+
+```python
+import numpy as np
+
+# Create I/O binding
+io_binding = session.io_binding()
+
+# Bind input
+input_data = np.array([[1.0, 2.0]], dtype=np.float32)
+io_binding.bind_cpu_input('input', input_data)
+
+# Bind output
+io_binding.bind_output('output')
+
+# Run with binding
+session.run_with_iobinding(io_binding)
+outputs = io_binding.copy_outputs_to_cpu()
+```
+
+### GPU I/O Binding
+
+```python
+# Bind input on GPU
+io_binding.bind_input(
+    name='input',
+    device_type='cuda',
+    device_id=0,
+    element_type=np.float32,
+    shape=input_data.shape,
+    buffer_ptr=input_ptr  # CUDA device pointer
+)
+
+# Bind output on GPU
+io_binding.bind_output(
+    name='output',
+    device_type='cuda',
+    device_id=0
+)
+```
+
+## Profiling and Analysis
+
+### Enable Profiling
+
+```python
+session_options.enable_profiling = True
+session = ort.InferenceSession("model.onnx", session_options)
+
+# Run inference
+session.run(None, {"input": input_data})
+
+# Get profile file
+profile_file = session.end_profiling()
+print(f"Profile saved to: {profile_file}")
+```
+
+### Analyze Performance
+
+The profile file contains:
+- Operator execution times
+- Memory usage patterns
+- Data transfer overhead
+- Kernel launch times
+
+## Best Practices
+
+### 1. Choose the Right Execution Provider
+
+- Use GPU providers (CUDA, TensorRT, DirectML) for compute-intensive models
+- Use CPU provider for smaller models or edge devices
+- Test multiple providers to find the best fit
+
+### 2. Optimize Thread Configuration
+
+```python
+import os
+
+# For CPU-bound workloads
+num_cores = os.cpu_count()
+session_options.intra_op_num_threads = num_cores
+session_options.inter_op_num_threads = 1
+```
+
+### 3. Use I/O Binding
+
+- Reduces memory allocation overhead
+- Enables zero-copy for GPU inference
+- Best for high-throughput scenarios
+
+### 4. Enable All Optimizations
+
+```python
+# Maximum optimization
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+session_options.enable_mem_pattern = True
+session_options.enable_cpu_mem_arena = True
+```
+
+### 5. Warm Up the Session
+
+```python
+# Run a few warm-up iterations
+for _ in range(5):
+    session.run(None, {"input": dummy_input})
+
+# Now measure actual performance
+start = time.time()
+for _ in range(100):
+    session.run(None, {"input": input_data})
+end = time.time()
+```
+
+## Common Performance Issues
+
+### Issue: Slow First Inference
+
+**Solution**: Model optimization and kernel compilation happen on first run. Use warm-up iterations or save optimized models.
+
+### Issue: High Memory Usage
+
+**Solution**: 
+- Limit GPU memory with `gpu_mem_limit`
+- Use smaller batch sizes
+- Enable memory pattern optimization
+
+### Issue: Poor CPU Utilization
+
+**Solution**:
+- Adjust `intra_op_num_threads` and `inter_op_num_threads`
+- Try different execution modes
+- Build ONNX Runtime with OpenMP support
+
+## Advanced Configuration
+
+### Custom Execution Provider Configuration
+
+```python
+# Advanced CUDA configuration
+cuda_options = {
+    'device_id': 0,
+    'arena_extend_strategy': 'kSameAsRequested',
+    'gpu_mem_limit': 4 * 1024 * 1024 * 1024,
+    'cudnn_conv_algo_search': 'HEURISTIC',
+    'do_copy_in_default_stream': True,
+    'cudnn_conv_use_max_workspace': True,
+}
+session_options.append_execution_provider('CUDAExecutionProvider', cuda_options)
+```
+
+### Session Configuration File
+
+```python
+# Load configuration from file
+import json
+
+with open('session_config.json', 'r') as f:
+    config = json.load(f)
+
+session_options.intra_op_num_threads = config['intra_op_threads']
+session_options.inter_op_num_threads = config['inter_op_threads']
+session_options.graph_optimization_level = getattr(
+    ort.GraphOptimizationLevel, 
+    config['optimization_level']
+)
+```
+
+## See Also
+
+- [Threading and Parallelism](/performance/threading)
+- [Memory Optimization](/performance/memory-optimization)
+- [Benchmarking Models](/performance/benchmarking)

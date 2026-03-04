@@ -1,0 +1,617 @@
+---
+title: Tensor Operations
+description: Creating and manipulating tensors with OrtValue
+---
+
+# Tensor Operations
+
+The `OrtValue` object represents tensors and other ONNX types (maps, sequences, etc.).
+
+## Creating Tensors
+
+### CreateTensorAsOrtValue
+
+```c
+OrtStatus* (*CreateTensorAsOrtValue)(
+    OrtAllocator* allocator,
+    const int64_t* shape,
+    size_t shape_len,
+    ONNXTensorElementDataType type,
+    OrtValue** out);
+```
+
+Create a tensor using an allocator. Memory is allocated by ORT.
+
+**Parameters:**
+- `allocator`: Allocator to use for tensor memory
+- `shape`: Array of dimension sizes
+- `shape_len`: Number of dimensions
+- `type`: Element data type
+- `out`: Newly created tensor (must be freed with `ReleaseValue`)
+
+**Returns:** `NULL` on success
+
+**Example:**
+
+<CodeGroup>
+```c C API
+OrtAllocator* allocator;
+api->GetAllocatorWithDefaultOptions(&allocator);
+
+int64_t shape[] = {1, 3, 224, 224};
+size_t shape_len = 4;
+
+OrtValue* tensor;
+OrtStatus* status = api->CreateTensorAsOrtValue(
+    allocator,
+    shape,
+    shape_len,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+    &tensor
+);
+
+if (status == NULL) {
+    // Get pointer to tensor data
+    float* tensor_data;
+    api->GetTensorMutableData(tensor, (void**)&tensor_data);
+    
+    // Fill tensor with data
+    size_t num_elements = 1 * 3 * 224 * 224;
+    for (size_t i = 0; i < num_elements; i++) {
+        tensor_data[i] = /* your data */;
+    }
+}
+```
+
+```cpp C++ API
+auto memory_info = Ort::MemoryInfo::CreateCpu(
+    OrtArenaAllocator, OrtMemTypeDefault);
+
+std::vector<int64_t> shape = {1, 3, 224, 224};
+size_t num_elements = 1 * 3 * 224 * 224;
+
+auto tensor = Ort::Value::CreateTensor<float>(
+    memory_info, shape.data(), shape.size());
+
+float* tensor_data = tensor.GetTensorMutableData<float>();
+for (size_t i = 0; i < num_elements; i++) {
+    tensor_data[i] = /* your data */;
+}
+```
+</CodeGroup>
+
+### CreateTensorWithDataAsOrtValue
+
+```c
+OrtStatus* (*CreateTensorWithDataAsOrtValue)(
+    const OrtMemoryInfo* info,
+    void* p_data,
+    size_t p_data_len,
+    const int64_t* shape,
+    size_t shape_len,
+    ONNXTensorElementDataType type,
+    OrtValue** out);
+```
+
+Create a tensor backed by user-supplied memory. No data is copied.
+
+**Parameters:**
+- `info`: Memory location descriptor
+- `p_data`: Pointer to user-allocated data buffer
+- `p_data_len`: Size of data buffer in bytes
+- `shape`: Array of dimension sizes
+- `shape_len`: Number of dimensions
+- `type`: Element data type
+- `out`: Newly created tensor (must be freed with `ReleaseValue`)
+
+**Important:** 
+- The caller owns `p_data` and must keep it valid until the `OrtValue` is released
+- `ReleaseValue` will NOT free `p_data`
+
+**Example:**
+```c
+// User-managed buffer
+float* my_data = malloc(1 * 3 * 224 * 224 * sizeof(float));
+// Fill my_data...
+
+OrtMemoryInfo* mem_info;
+api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info);
+
+int64_t shape[] = {1, 3, 224, 224};
+OrtValue* tensor;
+api->CreateTensorWithDataAsOrtValue(
+    mem_info,
+    my_data,
+    1 * 3 * 224 * 224 * sizeof(float),
+    shape,
+    4,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+    &tensor
+);
+
+// Use tensor for inference...
+
+api->ReleaseValue(tensor);
+api->ReleaseMemoryInfo(mem_info);
+free(my_data);  // Caller must free the buffer
+```
+
+### ReleaseValue
+
+```c
+void (*ReleaseValue)(OrtValue* value);
+```
+
+Free an `OrtValue` object.
+
+**Parameters:**
+- `value`: Value to free (can be NULL)
+
+## Tensor Data Access
+
+### GetTensorMutableData
+
+```c
+OrtStatus* (*GetTensorMutableData)(OrtValue* value, void** out);
+```
+
+Get a pointer to the tensor's internal data for reading or writing.
+
+**Parameters:**
+- `value`: Tensor value
+- `out`: Pointer to tensor data (valid until value is released)
+
+**Returns:** `NULL` on success
+
+**Example:**
+```c
+float* tensor_data;
+api->GetTensorMutableData(tensor, (void**)&tensor_data);
+
+// Read or write tensor data
+tensor_data[0] = 1.0f;
+```
+
+### TensorAt
+
+```c
+OrtStatus* (*TensorAt)(OrtValue* value,
+                       const int64_t* location_values,
+                       size_t location_values_count,
+                       void** out);
+```
+
+Get a pointer to a specific element in a tensor.
+
+**Parameters:**
+- `value`: Tensor value
+- `location_values`: Array of indices specifying element location
+- `location_values_count`: Number of indices (must match tensor rank)
+- `out`: Pointer to the element
+
+**Example:**
+```c
+// For tensor with shape [3, 224, 224], get element at [2, 150, 128]
+int64_t location[] = {2, 150, 128};
+float* element_ptr;
+
+api->TensorAt(tensor, location, 3, (void**)&element_ptr);
+printf("Element value: %f\n", *element_ptr);
+```
+
+**Note:** Only works for numeric tensors (not strings).
+
+## Tensor Type Information
+
+### GetTensorTypeAndShape
+
+```c
+OrtStatus* (*GetTensorTypeAndShape)(
+    const OrtValue* value,
+    OrtTensorTypeAndShapeInfo** out);
+```
+
+Get type and shape information from a tensor.
+
+**Parameters:**
+- `value`: Tensor value to query
+- `out`: Type and shape info (must be freed with `ReleaseTensorTypeAndShapeInfo`)
+
+**Example:**
+```c
+OrtTensorTypeAndShapeInfo* info;
+api->GetTensorTypeAndShape(tensor, &info);
+
+// Get element type
+ONNXTensorElementDataType type;
+api->GetTensorElementType(info, &type);
+
+// Get shape
+size_t num_dims;
+api->GetDimensionsCount(info, &num_dims);
+
+int64_t* dims = malloc(num_dims * sizeof(int64_t));
+api->GetDimensions(info, dims, num_dims);
+
+printf("Shape: [");
+for (size_t i = 0; i < num_dims; i++) {
+    printf("%lld%s", dims[i], i < num_dims - 1 ? ", " : "");
+}
+printf("]\n");
+
+free(dims);
+api->ReleaseTensorTypeAndShapeInfo(info);
+```
+
+### GetTensorElementType
+
+```c
+OrtStatus* (*GetTensorElementType)(
+    const OrtTensorTypeAndShapeInfo* info,
+    ONNXTensorElementDataType* out);
+```
+
+Get the element data type from type info.
+
+**Parameters:**
+- `info`: Type and shape info
+- `out`: Element data type
+
+**Data Types:**
+```c
+typedef enum ONNXTensorElementDataType {
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,      // float
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,      // uint8_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,       // int8_t  
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16,     // uint16_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16,      // int16_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,      // int32_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,      // int64_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,     // std::string
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,     // double
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,     // uint32_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,     // uint64_t
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,
+} ONNXTensorElementDataType;
+```
+
+### GetDimensionsCount
+
+```c
+OrtStatus* (*GetDimensionsCount)(
+    const OrtTensorTypeAndShapeInfo* info,
+    size_t* out);
+```
+
+Get the number of dimensions in the tensor shape.
+
+### GetDimensions
+
+```c
+OrtStatus* (*GetDimensions)(
+    const OrtTensorTypeAndShapeInfo* info,
+    int64_t* dim_values,
+    size_t dim_values_length);
+```
+
+Get the dimensions of the tensor.
+
+**Parameters:**
+- `info`: Type and shape info
+- `dim_values`: Array to receive dimension sizes
+- `dim_values_length`: Size of `dim_values` array (use `GetDimensionsCount`)
+
+### GetTensorShapeElementCount
+
+```c
+OrtStatus* (*GetTensorShapeElementCount)(
+    const OrtTensorTypeAndShapeInfo* info,
+    size_t* out);
+```
+
+Get total number of elements in the tensor (product of all dimensions).
+
+**Parameters:**
+- `info`: Type and shape info
+- `out`: Total element count
+
+**Note:** Returns 1 for scalar (0 dimensions), -1 if any dimension is negative.
+
+### IsTensor
+
+```c
+OrtStatus* (*IsTensor)(const OrtValue* value, int* out);
+```
+
+Check if an `OrtValue` is a tensor.
+
+**Parameters:**
+- `value`: Value to check
+- `out`: Set to 1 if tensor, 0 otherwise
+
+## String Tensors
+
+### FillStringTensor
+
+```c
+OrtStatus* (*FillStringTensor)(OrtValue* value,
+                                const char* const* s,
+                                size_t s_len);
+```
+
+Set all strings in a string tensor at once.
+
+**Parameters:**
+- `value`: String tensor (type `ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING`)
+- `s`: Array of null-terminated strings
+- `s_len`: Number of strings (must match tensor shape)
+
+**Example:**
+```c
+int64_t shape[] = {3};
+OrtValue* str_tensor;
+api->CreateTensorAsOrtValue(
+    allocator, shape, 1,
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+    &str_tensor
+);
+
+const char* strings[] = {"hello", "world", "test"};
+api->FillStringTensor(str_tensor, strings, 3);
+```
+
+### GetStringTensorDataLength
+
+```c
+OrtStatus* (*GetStringTensorDataLength)(const OrtValue* value,
+                                         size_t* len);
+```
+
+Get total byte length of all strings (without null terminators).
+
+**Parameters:**
+- `value`: String tensor
+- `len`: Total byte length
+
+### GetStringTensorContent
+
+```c
+OrtStatus* (*GetStringTensorContent)(
+    const OrtValue* value,
+    void* s,
+    size_t s_len,
+    size_t* offsets,
+    size_t offsets_len);
+```
+
+Get all strings from a string tensor.
+
+**Parameters:**
+- `value`: String tensor
+- `s`: Buffer to receive all strings (not null-terminated)
+- `s_len`: Buffer size (get from `GetStringTensorDataLength`)
+- `offsets`: Array to receive start offsets of each string
+- `offsets_len`: Size of offsets array (matches number of strings)
+
+**Example:**
+```c
+// Get required buffer size
+size_t total_len;
+api->GetStringTensorDataLength(str_tensor, &total_len);
+
+// Allocate buffers
+char* buffer = malloc(total_len);
+size_t num_strings = 3;
+size_t* offsets = malloc(num_strings * sizeof(size_t));
+
+// Get strings
+api->GetStringTensorContent(str_tensor, buffer, total_len,
+                             offsets, num_strings);
+
+// Access individual strings
+for (size_t i = 0; i < num_strings; i++) {
+    size_t start = offsets[i];
+    size_t len = (i + 1 < num_strings) 
+        ? offsets[i + 1] - start
+        : total_len - start;
+    printf("String %zu: %.*s\n", i, (int)len, buffer + start);
+}
+
+free(buffer);
+free(offsets);
+```
+
+### GetStringTensorElement
+
+```c
+OrtStatus* (*GetStringTensorElement)(const OrtValue* value,
+                                      size_t s_len,
+                                      size_t index,
+                                      void* s);
+```
+
+Get a single string from a string tensor.
+
+**Parameters:**
+- `value`: String tensor
+- `s_len`: Size of buffer (get from `GetStringTensorElementLength`)
+- `index`: Index of string to retrieve
+- `s`: Buffer to receive string (not null-terminated)
+
+### FillStringTensorElement
+
+```c
+OrtStatus* (*FillStringTensorElement)(OrtValue* value,
+                                       const char* s,
+                                       size_t index);
+```
+
+Set a single string in a string tensor.
+
+**Parameters:**
+- `value`: String tensor
+- `s`: Null-terminated UTF-8 string
+- `index`: Index where to set the string
+
+## Memory Information
+
+### CreateMemoryInfo
+
+```c
+OrtStatus* (*CreateMemoryInfo)(
+    const char* name,
+    OrtAllocatorType type,
+    int id,
+    OrtMemType mem_type,
+    OrtMemoryInfo** out);
+```
+
+Create a memory info descriptor.
+
+**Parameters:**
+- `name`: Memory location name (e.g., "Cpu", "Cuda")
+- `type`: Allocator type
+- `id`: Device ID
+- `mem_type`: Memory type
+- `out`: Newly created memory info (must be freed with `ReleaseMemoryInfo`)
+
+**Allocator Types:**
+```c
+typedef enum OrtAllocatorType {
+    OrtInvalidAllocator = -1,
+    OrtDeviceAllocator = 0,
+    OrtArenaAllocator = 1,
+} OrtAllocatorType;
+```
+
+**Memory Types:**
+```c
+typedef enum OrtMemType {
+    OrtMemTypeCPUInput = -2,   // CPU memory for non-CPU EP input
+    OrtMemTypeCPUOutput = -1,  // CPU-accessible output from non-CPU EP
+    OrtMemTypeCPU = OrtMemTypeCPUOutput,
+    OrtMemTypeDefault = 0,     // Default for execution provider
+} OrtMemType;
+```
+
+### CreateCpuMemoryInfo
+
+```c
+OrtStatus* (*CreateCpuMemoryInfo)(OrtAllocatorType type,
+                                   OrtMemType mem_type,
+                                   OrtMemoryInfo** out);
+```
+
+Create memory info for CPU memory (shortcut for `CreateMemoryInfo` with name="Cpu" and id=0).
+
+### ReleaseMemoryInfo
+
+```c
+void (*ReleaseMemoryInfo)(OrtMemoryInfo* info);
+```
+
+Free memory info.
+
+## Non-Tensor Types
+
+### CreateValue
+
+```c
+OrtStatus* (*CreateValue)(
+    const OrtValue* const* in,
+    size_t num_values,
+    ONNXType value_type,
+    OrtValue** out);
+```
+
+Create a map or sequence value.
+
+**Parameters:**
+- `in`: Array of `OrtValue` objects
+- `num_values`: Number of values (2 for maps, N for sequences)
+- `value_type`: `ONNX_TYPE_MAP` or `ONNX_TYPE_SEQUENCE`
+- `out`: Newly created value
+
+**For Maps:** `num_values` must be 2, with `in[0]` containing keys and `in[1]` containing values.
+
+**For Sequences:** `num_values` is the sequence length.
+
+### GetValue
+
+```c
+OrtStatus* (*GetValue)(const OrtValue* value,
+                       int index,
+                       OrtAllocator* allocator,
+                       OrtValue** out);
+```
+
+Get an element from a map or sequence.
+
+**Parameters:**
+- `value`: Map or sequence value
+- `index`: For maps: 0=keys, 1=values; For sequences: element index
+- `allocator`: Allocator for the new value
+- `out`: Retrieved element (must be freed with `ReleaseValue`)
+
+### GetValueCount
+
+```c
+OrtStatus* (*GetValueCount)(const OrtValue* value, size_t* out);
+```
+
+Get count of elements in a map or sequence.
+
+**Parameters:**
+- `value`: Map or sequence value
+- `out`: Element count (always 2 for maps)
+
+## C++ Helper Types
+
+### Float16_t
+
+```cpp
+struct Ort::Float16_t {
+    explicit Float16_t(float v);  // Convert from float
+    float ToFloat() const;         // Convert to float
+    
+    static Float16_t FromBits(uint16_t v);  // From raw bits
+};
+```
+
+**Example:**
+```cpp
+float values[] = {1.0f, 2.0f, 3.0f};
+std::vector<Ort::Float16_t> fp16_values;
+for (float v : values) {
+    fp16_values.push_back(Ort::Float16_t(v));
+}
+```
+
+### BFloat16_t
+
+```cpp
+struct Ort::BFloat16_t {
+    explicit BFloat16_t(float v);  // Convert from float
+    float ToFloat() const;          // Convert to float
+    
+    static BFloat16_t FromBits(uint16_t v);  // From raw bits
+};
+```
+
+## See Also
+
+- [C/C++ API Overview](./overview)
+- [Session Management](./session)
+- [Execution Providers](./providers)
+- [OrtApi Reference](./ort-api)

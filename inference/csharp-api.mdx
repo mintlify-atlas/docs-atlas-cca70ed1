@@ -1,0 +1,628 @@
+---
+title: C# Inference API
+description: Run ONNX model inference in .NET applications with C# API examples
+---
+
+# C# Inference API
+
+The ONNX Runtime C# API provides .NET integration for running ONNX models in Windows, Linux, and cross-platform applications. This guide covers the complete C# API with real examples.
+
+## Installation
+
+### NuGet Package
+
+```bash
+dotnet add package Microsoft.ML.OnnxRuntime
+
+# For GPU support (CUDA)
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu
+
+# For DirectML (Windows GPU)
+dotnet add package Microsoft.ML.OnnxRuntime.DirectML
+```
+
+### Package Manager Console
+
+```powershell
+Install-Package Microsoft.ML.OnnxRuntime
+```
+
+## Quick Start
+
+Here's a minimal C# example:
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
+using System.Linq;
+
+class Program
+{
+    static void Main()
+    {
+        // Create inference session
+        using var session = new InferenceSession("model.onnx");
+        
+        // Get input metadata
+        var inputMeta = session.InputMetadata;
+        var inputName = inputMeta.Keys.First();
+        var inputShape = inputMeta[inputName].Dimensions;
+        
+        // Create input tensor
+        var inputData = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
+        // Fill with data...
+        
+        // Create input container
+        var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor(inputName, inputData)
+        };
+        
+        // Run inference
+        using var results = session.Run(inputs);
+        
+        // Get output
+        var output = results.First().AsEnumerable<float>().ToArray();
+        Console.WriteLine($"Output: {output[0]}");
+    }
+}
+```
+
+## InferenceSession Class
+
+### Creating a Session
+
+**From file path:**
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+// Basic usage
+using var session = new InferenceSession("model.onnx");
+
+// With session options
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+using var session = new InferenceSession("model.onnx", options);
+```
+
+**From byte array:**
+
+```csharp
+byte[] modelBytes = File.ReadAllBytes("model.onnx");
+using var session = new InferenceSession(modelBytes);
+```
+
+**With pre-packed weights container:**
+
+```csharp
+var prepackedWeightsContainer = new PrePackedWeightsContainer();
+using var session1 = new InferenceSession("model.onnx", prepackedWeightsContainer);
+using var session2 = new InferenceSession("model.onnx", prepackedWeightsContainer);
+// Both sessions share pre-packed weights
+```
+
+### Session Properties
+
+```csharp
+// Get input metadata
+IReadOnlyDictionary<string, NodeMetadata> inputMetadata = session.InputMetadata;
+foreach (var input in inputMetadata)
+{
+    Console.WriteLine($"Input: {input.Key}");
+    Console.WriteLine($"  Dimensions: [{string.Join(", ", input.Value.Dimensions)}]");
+    Console.WriteLine($"  Type: {input.Value.ElementDataType}");
+}
+
+// Get input names (ordered)
+IReadOnlyList<string> inputNames = session.InputNames;
+
+// Get output metadata
+IReadOnlyDictionary<string, NodeMetadata> outputMetadata = session.OutputMetadata;
+foreach (var output in outputMetadata)
+{
+    Console.WriteLine($"Output: {output.Key}");
+    Console.WriteLine($"  Dimensions: [{string.Join(", ", output.Value.Dimensions)}]");
+    Console.WriteLine($"  Type: {output.Value.ElementDataType}");
+}
+
+// Get output names (ordered)
+IReadOnlyList<string> outputNames = session.OutputNames;
+```
+
+### Running Inference
+
+**Basic inference:**
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Collections.Generic;
+using System.Linq;
+
+// Prepare input
+var inputName = session.InputNames[0];
+var inputData = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
+// Fill inputData...
+
+var inputs = new List<NamedOnnxValue>
+{
+    NamedOnnxValue.CreateFromTensor(inputName, inputData)
+};
+
+// Run inference - returns all outputs
+using var results = session.Run(inputs);
+
+// Access outputs
+var firstOutput = results.First().AsTensor<float>();
+Console.WriteLine($"Output shape: [{string.Join(", ", firstOutput.Dimensions)}]");
+```
+
+**Specify output names:**
+
+```csharp
+// Request specific outputs
+var outputNames = new[] { "output1", "output2" };
+using var results = session.Run(inputs, outputNames);
+```
+
+**With RunOptions:**
+
+```csharp
+var runOptions = new RunOptions();
+runOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+runOptions.LogVerbosityLevel = 0;
+runOptions.RunTag = "MyInference";
+
+using var results = session.Run(inputs, runOptions);
+```
+
+### Model Metadata
+
+```csharp
+var metadata = session.ModelMetadata;
+Console.WriteLine($"Producer: {metadata.ProducerName}");
+Console.WriteLine($"Graph Name: {metadata.GraphName}");
+Console.WriteLine($"Domain: {metadata.Domain}");
+Console.WriteLine($"Version: {metadata.Version}");
+Console.WriteLine($"Description: {metadata.Description}\n");
+
+// Custom metadata
+foreach (var kvp in metadata.CustomMetadataMap)
+{
+    Console.WriteLine($"{kvp.Key}: {kvp.Value}");
+}
+```
+
+## SessionOptions
+
+Configure session behavior:
+
+```csharp
+var options = new SessionOptions();
+
+// Graph optimization level
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+// Options: ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_EXTENDED, ORT_ENABLE_ALL
+
+// Threading
+options.IntraOpNumThreads = 4;
+options.InterOpNumThreads = 2;
+
+// Execution mode
+options.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
+// Options: ORT_SEQUENTIAL, ORT_PARALLEL
+
+// Memory optimization
+options.EnableCpuMemArena = true;
+options.EnableMemoryPattern = true;
+
+// Profiling
+options.EnableProfiling = true;
+options.ProfileOutputPathPrefix = "ort_profile";
+
+// Logging
+options.LogId = "MySession";
+options.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+options.LogVerbosityLevel = 0;
+
+// Save optimized model
+options.OptimizedModelFilePath = "optimized_model.onnx";
+
+// Register custom ops library
+options.RegisterCustomOpLibraryV2("custom_ops.dll", out var libraryHandle);
+```
+
+## RunOptions
+
+Configure individual inference runs:
+
+```csharp
+var runOptions = new RunOptions();
+runOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+runOptions.LogVerbosityLevel = 0;
+runOptions.RunTag = "inference_run_1";
+runOptions.Terminate = false; // Set to true to cancel inference
+
+using var results = session.Run(inputs, runOptions);
+```
+
+## Working with Tensors
+
+### DenseTensor
+
+```csharp
+using Microsoft.ML.OnnxRuntime.Tensors;
+
+// Create tensor with shape
+var tensor = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
+
+// Create from array
+float[] data = new float[1 * 3 * 224 * 224];
+var tensor = new DenseTensor<float>(data, new[] { 1, 3, 224, 224 });
+
+// Access elements
+tensor[0, 0, 0, 0] = 1.0f;
+float value = tensor[0, 0, 0, 0];
+
+// Get dimensions
+var shape = tensor.Dimensions.ToArray();
+var length = tensor.Length;
+```
+
+### NamedOnnxValue
+
+```csharp
+// Create from tensor
+var namedValue = NamedOnnxValue.CreateFromTensor("input", tensor);
+
+// Create from enumerable (1D data)
+float[] data = { 1.0f, 2.0f, 3.0f };
+var namedValue = NamedOnnxValue.CreateFromTensor("input", 
+    new DenseTensor<float>(data, new[] { 3 }));
+
+// Access result
+var outputTensor = namedValue.AsTensor<float>();
+var outputArray = namedValue.AsEnumerable<float>().ToArray();
+```
+
+## Execution Providers
+
+### Adding Execution Providers
+
+**CUDA:**
+
+```csharp
+var options = new SessionOptions();
+options.AppendExecutionProvider_CUDA(0); // Device ID
+
+using var session = new InferenceSession("model.onnx", options);
+```
+
+**CUDA with options:**
+
+```csharp
+var cudaOptions = new OrtCUDAProviderOptions();
+var providerOptions = new Dictionary<string, string>
+{
+    ["device_id"] = "0",
+    ["gpu_mem_limit"] = "2147483648", // 2GB
+    ["arena_extend_strategy"] = "kSameAsRequested",
+    ["cudnn_conv_algo_search"] = "EXHAUSTIVE"
+};
+
+options.AppendExecutionProvider("CUDAExecutionProvider", providerOptions);
+```
+
+**TensorRT:**
+
+```csharp
+var trtOptions = new Dictionary<string, string>
+{
+    ["device_id"] = "0",
+    ["trt_max_workspace_size"] = "2147483648", // 2GB
+    ["trt_fp16_enable"] = "true"
+};
+
+options.AppendExecutionProvider("TensorrtExecutionProvider", trtOptions);
+```
+
+**DirectML (Windows):**
+
+```csharp
+options.AppendExecutionProvider_DML(0); // Device ID
+```
+
+**CoreML (macOS):**
+
+```csharp
+options.AppendExecutionProvider_CoreML(CoreMLFlags.COREML_FLAG_ENABLE_ON_SUBGRAPH);
+```
+
+**Check available providers:**
+
+```csharp
+var availableProviders = OrtEnv.Instance().GetAvailableProviders();
+Console.WriteLine("Available providers: " + string.Join(", ", availableProviders));
+```
+
+## OrtValue API
+
+Lower-level tensor API for advanced scenarios:
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+// Create OrtValue from tensor
+var tensor = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
+using var ortValue = OrtValue.CreateTensorValueFromMemory(
+    tensor.Buffer,
+    new[] { 1L, 3L, 224L, 224L });
+
+// Check if tensor
+bool isTensor = ortValue.IsTensor;
+
+// Get tensor element type
+var elementType = ortValue.GetTensorElementType();
+
+// Get tensor type and shape
+var typeAndShape = ortValue.GetTensorTypeAndShape();
+var shape = typeAndShape.Shape;
+var elementCount = typeAndShape.ElementCount;
+```
+
+## Complete Example: Image Classification
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+
+class ImageClassifier
+{
+    private InferenceSession session;
+    private string inputName;
+    private int[] inputDimensions;
+    
+    public ImageClassifier(string modelPath)
+    {
+        // Configure session options
+        var options = new SessionOptions();
+        options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+        options.IntraOpNumThreads = 4;
+        
+        // Add CUDA provider
+        try
+        {
+            options.AppendExecutionProvider_CUDA(0);
+            Console.WriteLine("Using CUDA execution provider");
+        }
+        catch
+        {
+            Console.WriteLine("CUDA not available, using CPU");
+        }
+        
+        // Create session
+        session = new InferenceSession(modelPath, options);
+        
+        // Get input metadata
+        var inputMeta = session.InputMetadata.First();
+        inputName = inputMeta.Key;
+        inputDimensions = inputMeta.Value.Dimensions;
+        
+        Console.WriteLine($"Model loaded: {modelPath}");
+        Console.WriteLine($"Input: {inputName}, Shape: [{string.Join(", ", inputDimensions)}]");
+        
+        foreach (var output in session.OutputMetadata)
+        {
+            Console.WriteLine($"Output: {output.Key}, Shape: [{string.Join(", ", output.Value.Dimensions)}]");
+        }
+    }
+    
+    public float[] Classify(Bitmap image)
+    {
+        // Preprocess image
+        var tensor = PreprocessImage(image);
+        
+        // Create input
+        var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor(inputName, tensor)
+        };
+        
+        // Run inference
+        using var results = session.Run(inputs);
+        
+        // Get output
+        var output = results.First().AsTensor<float>();
+        return output.ToArray();
+    }
+    
+    private DenseTensor<float> PreprocessImage(Bitmap image)
+    {
+        // Resize to model input size (224x224 for most models)
+        int width = inputDimensions[3];
+        int height = inputDimensions[2];
+        var resized = new Bitmap(image, new Size(width, height));
+        
+        // Create tensor
+        var tensor = new DenseTensor<float>(inputDimensions);
+        
+        // ImageNet normalization constants
+        float[] mean = { 0.485f, 0.456f, 0.406f };
+        float[] std = { 0.229f, 0.224f, 0.225f };
+        
+        // Convert to CHW format and normalize
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                var pixel = resized.GetPixel(x, y);
+                
+                // Normalize and set tensor values (CHW format)
+                tensor[0, 0, y, x] = (pixel.R / 255.0f - mean[0]) / std[0];
+                tensor[0, 1, y, x] = (pixel.G / 255.0f - mean[1]) / std[1];
+                tensor[0, 2, y, x] = (pixel.B / 255.0f - mean[2]) / std[2];
+            }
+        }
+        
+        return tensor;
+    }
+    
+    public void Dispose()
+    {
+        session?.Dispose();
+    }
+}
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        try
+        {
+            using var classifier = new ImageClassifier("resnet50.onnx");
+            
+            // Load image
+            using var image = new Bitmap("cat.jpg");
+            
+            // Run classification
+            var predictions = classifier.Classify(image);
+            
+            // Get top 5 predictions
+            var top5 = predictions
+                .Select((score, index) => new { Index = index, Score = score })
+                .OrderByDescending(x => x.Score)
+                .Take(5);
+            
+            Console.WriteLine("\nTop 5 predictions:");
+            foreach (var pred in top5)
+            {
+                Console.WriteLine($"  Class {pred.Index}: {pred.Score:F4}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+}
+```
+
+## IOBinding for Advanced Scenarios
+
+Use IOBinding for zero-copy inference with GPU memory:
+
+```csharp
+using var ioBinding = session.CreateIoBinding();
+
+// Bind input to GPU
+var inputOrtValue = OrtValue.CreateTensorValueFromMemory(
+    inputData,
+    new[] { 1L, 3L, 224L, 224L });
+
+ioBinding.BindInput(inputName, inputOrtValue);
+
+// Bind output to GPU
+ioBinding.BindOutput(outputName, OrtMemoryInfo.DefaultInstance);
+
+// Run with binding
+using var runOptions = new RunOptions();
+session.RunWithBinding(runOptions, ioBinding);
+
+// Get output
+var outputs = ioBinding.GetOutputValues();
+var outputTensor = outputs[0].GetTensorDataAsSpan<float>();
+```
+
+## Multi-Threading
+
+InferenceSession is thread-safe for inference:
+
+```csharp
+using var session = new InferenceSession("model.onnx");
+
+// Run inference from multiple threads
+Parallel.For(0, 10, i =>
+{
+    var inputs = PrepareInputs(i);
+    using var results = session.Run(inputs);
+    ProcessResults(results);
+});
+```
+
+## Error Handling
+
+```csharp
+try
+{
+    using var session = new InferenceSession("model.onnx");
+    using var results = session.Run(inputs);
+}
+catch (OnnxRuntimeException ex)
+{
+    Console.WriteLine($"ONNX Runtime error: {ex.Message}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Error: {ex.Message}");
+}
+```
+
+## Supported Data Types
+
+| ONNX Type | C# Type |
+|-----------|----------|
+| float | float |
+| double | double |
+| int8 | sbyte |
+| int16 | short |
+| int32 | int |
+| int64 | long |
+| uint8 | byte |
+| uint16 | ushort |
+| uint32 | uint |
+| uint64 | ulong |
+| bool | bool |
+| string | string |
+| float16 | Float16 |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Dispose Resources Properly">
+    Always dispose InferenceSession and inference results using `using` statements to prevent memory leaks.
+  </Accordion>
+
+  <Accordion title="Reuse Sessions">
+    Creating a session is expensive. Create once and reuse for multiple inferences.
+  </Accordion>
+
+  <Accordion title="Use Appropriate Execution Providers">
+    Choose the right execution provider for your hardware (CUDA for NVIDIA GPUs, DirectML for Windows, etc.).
+  </Accordion>
+
+  <Accordion title="Enable Graph Optimization">
+    Set GraphOptimizationLevel to ORT_ENABLE_ALL for best performance.
+  </Accordion>
+
+  <Accordion title="Thread Safety">
+    InferenceSession.Run() is thread-safe, so you can safely call it from multiple threads.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Model Optimization" icon="gauge-high" href="/inference/model-optimization">
+    Learn how to optimize models for production
+  </Card>
+  
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers/overview">
+    Configure hardware acceleration
+  </Card>
+</CardGroup>

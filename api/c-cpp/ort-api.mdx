@@ -1,0 +1,537 @@
+---
+title: OrtApi Structure Reference
+description: Complete reference for the ONNX Runtime C API structure and functions
+---
+
+# OrtApi Structure Reference
+
+The `OrtApi` structure contains function pointers for all ONNX Runtime C API operations. Access it through the `OrtApiBase`.
+
+## Accessing the API
+
+```c
+const OrtApiBase* api_base = OrtGetApiBase();
+const OrtApi* api = api_base->GetApi(ORT_API_VERSION);
+```
+
+```cpp
+// C++ wrapper
+const OrtApi& api = Ort::GetApi();
+```
+
+## API Version
+
+```c
+#define ORT_API_VERSION 25
+```
+
+The current API version. Use this when calling `GetApi()` to ensure compatibility.
+
+## Status and Error Handling
+
+### CreateStatus
+
+```c
+OrtStatus* (*CreateStatus)(OrtErrorCode code, const char* msg);
+```
+
+Create an error status object.
+
+**Parameters:**
+- `code`: Error code from `OrtErrorCode` enum
+- `msg`: Null-terminated error message (will be copied)
+
+**Returns:** New `OrtStatus` object (must be freed with `ReleaseStatus`)
+
+**Example:**
+```c
+OrtStatus* status = api->CreateStatus(ORT_FAIL, "Custom error message");
+```
+
+### GetErrorCode
+
+```c
+OrtErrorCode (*GetErrorCode)(const OrtStatus* status);
+```
+
+Get the error code from a status object.
+
+**Parameters:**
+- `status`: Status object to query
+
+**Returns:** `OrtErrorCode` value
+
+**Error Codes:**
+```c
+typedef enum OrtErrorCode {
+    ORT_OK,
+    ORT_FAIL,
+    ORT_INVALID_ARGUMENT,
+    ORT_NO_SUCHFILE,
+    ORT_NO_MODEL,
+    ORT_ENGINE_ERROR,
+    ORT_RUNTIME_EXCEPTION,
+    ORT_INVALID_PROTOBUF,
+    ORT_MODEL_LOADED,
+    ORT_NOT_IMPLEMENTED,
+    ORT_INVALID_GRAPH,
+    ORT_EP_FAIL,
+    ORT_MODEL_LOAD_CANCELED,
+    ORT_MODEL_REQUIRES_COMPILATION,
+    ORT_NOT_FOUND,
+} OrtErrorCode;
+```
+
+### GetErrorMessage
+
+```c
+const char* (*GetErrorMessage)(const OrtStatus* status);
+```
+
+Get the error message from a status object.
+
+**Parameters:**
+- `status`: Status object to query
+
+**Returns:** Null-terminated error message string (do not free; valid until status is released)
+
+### ReleaseStatus
+
+```c
+void (*ReleaseStatus)(OrtStatus* status);
+```
+
+Free a status object.
+
+**Parameters:**
+- `status`: Status object to free (can be NULL)
+
+## Environment Management
+
+### CreateEnv
+
+```c
+OrtStatus* (*CreateEnv)(OrtLoggingLevel log_severity_level, 
+                        const char* logid,
+                        OrtEnv** out);
+```
+
+Create an ONNX Runtime environment. The environment must be created before using other ONNX Runtime functionality.
+
+**Parameters:**
+- `log_severity_level`: Minimum severity level for log messages
+- `logid`: Identifier for logging
+- `out`: Newly created environment (must be freed with `ReleaseEnv`)
+
+**Returns:** `NULL` on success, error status otherwise
+
+**Logging Levels:**
+```c
+typedef enum OrtLoggingLevel {
+    ORT_LOGGING_LEVEL_VERBOSE,
+    ORT_LOGGING_LEVEL_INFO,
+    ORT_LOGGING_LEVEL_WARNING,
+    ORT_LOGGING_LEVEL_ERROR,
+    ORT_LOGGING_LEVEL_FATAL,
+} OrtLoggingLevel;
+```
+
+**Example:**
+```c
+OrtEnv* env;
+OrtStatus* status = api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "MyApp", &env);
+if (status != NULL) {
+    // Handle error
+    api->ReleaseStatus(status);
+}
+```
+
+### CreateEnvWithCustomLogger
+
+```c
+OrtStatus* (*CreateEnvWithCustomLogger)(
+    OrtLoggingFunction logging_function,
+    void* logger_param,
+    OrtLoggingLevel log_severity_level,
+    const char* logid,
+    OrtEnv** out);
+```
+
+Create an environment with a custom logging function.
+
+**Parameters:**
+- `logging_function`: Custom logging callback
+- `logger_param`: User data passed to logging callback
+- `log_severity_level`: Minimum severity level
+- `logid`: Log identifier
+- `out`: Newly created environment
+
+**Logging Function Signature:**
+```c
+typedef void (*OrtLoggingFunction)(
+    void* param,
+    OrtLoggingLevel severity,
+    const char* category,
+    const char* logid,
+    const char* code_location,
+    const char* message);
+```
+
+### CreateEnvWithGlobalThreadPools
+
+```c
+OrtStatus* (*CreateEnvWithGlobalThreadPools)(
+    OrtLoggingLevel log_severity_level,
+    const char* logid,
+    const OrtThreadingOptions* tp_options,
+    OrtEnv** out);
+```
+
+Create an environment with global thread pools shared across sessions.
+
+**Parameters:**
+- `log_severity_level`: Minimum severity level
+- `logid`: Log identifier
+- `tp_options`: Threading options for global thread pools
+- `out`: Newly created environment
+
+**Note:** Use with `DisablePerSessionThreads` to share thread pools across sessions.
+
+### ReleaseEnv
+
+```c
+void (*ReleaseEnv)(OrtEnv* env);
+```
+
+Free an environment object.
+
+**Parameters:**
+- `env`: Environment to free (can be NULL)
+
+## Session Options
+
+### CreateSessionOptions
+
+```c
+OrtStatus* (*CreateSessionOptions)(OrtSessionOptions** options);
+```
+
+Create session options for configuring session creation.
+
+**Parameters:**
+- `options`: Newly created session options (must be freed with `ReleaseSessionOptions`)
+
+**Returns:** `NULL` on success
+
+### SetIntraOpNumThreads
+
+```c
+OrtStatus* (*SetIntraOpNumThreads)(OrtSessionOptions* options, 
+                                    int intra_op_num_threads);
+```
+
+Set the number of threads used to parallelize execution within operators.
+
+**Parameters:**
+- `options`: Session options to modify
+- `intra_op_num_threads`: Number of threads (0 = use default)
+
+**Note:** When built with OpenMP, this setting has no effect.
+
+### SetInterOpNumThreads
+
+```c
+OrtStatus* (*SetInterOpNumThreads)(OrtSessionOptions* options,
+                                    int inter_op_num_threads);
+```
+
+Set the number of threads used to parallelize execution of the graph.
+
+**Parameters:**
+- `options`: Session options to modify
+- `inter_op_num_threads`: Number of threads (0 = use default)
+
+### SetSessionGraphOptimizationLevel
+
+```c
+OrtStatus* (*SetSessionGraphOptimizationLevel)(
+    OrtSessionOptions* options,
+    GraphOptimizationLevel graph_optimization_level);
+```
+
+Set the optimization level to apply when loading a graph.
+
+**Parameters:**
+- `options`: Session options to modify
+- `graph_optimization_level`: Optimization level
+
+**Optimization Levels:**
+```c
+typedef enum GraphOptimizationLevel {
+    ORT_DISABLE_ALL = 0,       // Disable all optimizations
+    ORT_ENABLE_BASIC = 1,      // Basic optimizations
+    ORT_ENABLE_EXTENDED = 2,   // Extended optimizations
+    ORT_ENABLE_LAYOUT = 3,     // Layout optimizations  
+    ORT_ENABLE_ALL = 99        // All optimizations
+} GraphOptimizationLevel;
+```
+
+### SetSessionExecutionMode
+
+```c
+OrtStatus* (*SetSessionExecutionMode)(OrtSessionOptions* options,
+                                       ExecutionMode execution_mode);
+```
+
+Set the execution mode (sequential or parallel).
+
+**Parameters:**
+- `options`: Session options to modify
+- `execution_mode`: Execution mode
+
+**Execution Modes:**
+```c
+typedef enum ExecutionMode {
+    ORT_SEQUENTIAL = 0,  // Execute operators sequentially
+    ORT_PARALLEL = 1,    // Execute operators in parallel when possible
+} ExecutionMode;
+```
+
+### SetOptimizedModelFilePath
+
+```c
+OrtStatus* (*SetOptimizedModelFilePath)(
+    OrtSessionOptions* options,
+    const ORTCHAR_T* optimized_model_filepath);
+```
+
+Set the path to save the optimized model after graph transformations.
+
+**Parameters:**
+- `options`: Session options
+- `optimized_model_filepath`: Path where optimized model will be saved
+
+### EnableProfiling
+
+```c
+OrtStatus* (*EnableProfiling)(OrtSessionOptions* options,
+                               const ORTCHAR_T* profile_file_prefix);
+```
+
+Enable profiling for the session.
+
+**Parameters:**
+- `options`: Session options
+- `profile_file_prefix`: Prefix for the profile data file
+
+### DisableProfiling
+
+```c
+OrtStatus* (*DisableProfiling)(OrtSessionOptions* options);
+```
+
+Disable profiling for the session.
+
+### EnableMemPattern
+
+```c
+OrtStatus* (*EnableMemPattern)(OrtSessionOptions* options);
+```
+
+Enable memory pattern optimization. If input shapes are consistent, ORT can trace and reuse memory allocation patterns.
+
+**Note:** Only available when sequential execution mode is enabled.
+
+### DisableMemPattern
+
+```c
+OrtStatus* (*DisableMemPattern)(OrtSessionOptions* options);
+```
+
+Disable memory pattern optimization.
+
+### EnableCpuMemArena
+
+```c
+OrtStatus* (*EnableCpuMemArena)(OrtSessionOptions* options);
+```
+
+Enable the memory arena on CPU. Arena may pre-allocate memory for future usage.
+
+### DisableCpuMemArena
+
+```c
+OrtStatus* (*DisableCpuMemArena)(OrtSessionOptions* options);
+```
+
+Disable the memory arena on CPU.
+
+### AddSessionConfigEntry
+
+```c
+OrtStatus* (*AddSessionConfigEntry)(OrtSessionOptions* options,
+                                     const char* config_key,
+                                     const char* config_value);
+```
+
+Add a session configuration entry as a key-value pair.
+
+**Parameters:**
+- `options`: Session options
+- `config_key`: Configuration key (null-terminated)
+- `config_value`: Configuration value (null-terminated)
+
+See `onnxruntime_session_options_config_keys.h` for valid keys and values.
+
+### ReleaseSessionOptions
+
+```c
+void (*ReleaseSessionOptions)(OrtSessionOptions* options);
+```
+
+Free session options.
+
+## Session Creation and Management
+
+See [Session Management](./session) page for detailed session-related functions.
+
+## Tensor and Value Operations
+
+See [Tensor Operations](./tensors) page for tensor creation and manipulation functions.
+
+## Execution Provider Configuration
+
+See [Execution Providers](./providers) page for provider-specific configuration functions.
+
+## Memory Management
+
+### GetAllocatorWithDefaultOptions
+
+```c
+OrtStatus* (*GetAllocatorWithDefaultOptions)(OrtAllocator** out);
+```
+
+Get the default CPU allocator. Always returns the same allocator instance.
+
+**Parameters:**
+- `out`: Pointer to the default allocator (do not free)
+
+**Returns:** `NULL` on success
+
+**Example:**
+```c
+OrtAllocator* allocator;
+api->GetAllocatorWithDefaultOptions(&allocator);
+```
+
+### CreateAllocator
+
+```c
+OrtStatus* (*CreateAllocator)(const OrtSession* session,
+                               const OrtMemoryInfo* mem_info,
+                               OrtAllocator** out);
+```
+
+Create an allocator for a session following a memory info specification.
+
+**Parameters:**
+- `session`: Session to create allocator for
+- `mem_info`: Memory info specifying allocation behavior
+- `out`: Newly created allocator (must be freed with `ReleaseAllocator`)
+
+### ReleaseAllocator
+
+```c
+void (*ReleaseAllocator)(OrtAllocator* allocator);
+```
+
+Free an allocator created with `CreateAllocator`.
+
+## Threading Options
+
+### CreateThreadingOptions
+
+```c
+OrtStatus* (*CreateThreadingOptions)(OrtThreadingOptions** out);
+```
+
+Create threading options for global thread pools.
+
+**Parameters:**
+- `out`: Newly created threading options (must be freed with `ReleaseThreadingOptions`)
+
+### SetGlobalIntraOpNumThreads
+
+```c
+OrtStatus* (*SetGlobalIntraOpNumThreads)(
+    OrtThreadingOptions* tp_options,
+    int intra_op_num_threads);
+```
+
+Set global intra-op thread count for use with `CreateEnvWithGlobalThreadPools`.
+
+**Parameters:**
+- `tp_options`: Threading options
+- `intra_op_num_threads`: Number of threads (0 = default, 1 = use calling thread)
+
+### SetGlobalInterOpNumThreads
+
+```c
+OrtStatus* (*SetGlobalInterOpNumThreads)(
+    OrtThreadingOptions* tp_options,
+    int inter_op_num_threads);
+```
+
+Set global inter-op thread count.
+
+### SetGlobalSpinControl
+
+```c
+OrtStatus* (*SetGlobalSpinControl)(OrtThreadingOptions* tp_options,
+                                    int allow_spinning);
+```
+
+Control whether thread pools spin when queues are empty.
+
+**Parameters:**
+- `tp_options`: Threading options
+- `allow_spinning`: 0 = don't spin (recommended for high CPU usage), 1 = spin
+
+### ReleaseThreadingOptions
+
+```c
+void (*ReleaseThreadingOptions)(OrtThreadingOptions* options);
+```
+
+Free threading options.
+
+## Utility Functions
+
+### GetAvailableProviders
+
+```c
+OrtStatus* (*GetAvailableProviders)(char*** out_ptr, int* provider_length);
+```
+
+Get names of all available execution providers.
+
+**Parameters:**
+- `out_ptr`: Array of provider name strings (must be freed with `ReleaseAvailableProviders`)
+- `provider_length`: Number of providers in the array
+
+**Note:** Providers may not be usable if system dependencies are missing.
+
+### ReleaseAvailableProviders
+
+```c
+OrtStatus* (*ReleaseAvailableProviders)(char** ptr, int providers_length);
+```
+
+Free the array returned by `GetAvailableProviders`.
+
+## See Also
+
+- [C/C++ API Overview](./overview)
+- [Session Management](./session)
+- [Tensor Operations](./tensors)
+- [Execution Providers](./providers)

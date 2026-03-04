@@ -1,0 +1,520 @@
+---
+title: SessionOptions Class
+description: C# SessionOptions API reference for configuring ONNX Runtime sessions
+---
+
+The `SessionOptions` class provides configuration options for creating and running inference sessions.
+
+## Namespace
+
+```csharp
+Microsoft.ML.OnnxRuntime
+```
+
+## Class Declaration
+
+```csharp
+public class SessionOptions : SafeHandle
+```
+
+## Constructor
+
+### SessionOptions()
+
+Creates a new SessionOptions instance with default settings.
+
+```csharp
+public SessionOptions()
+```
+
+**Example:**
+
+```csharp
+var options = new SessionOptions();
+```
+
+## Static Factory Methods
+
+### MakeSessionOptionWithCudaProvider
+
+Creates SessionOptions configured for CUDA execution.
+
+```csharp
+public static SessionOptions MakeSessionOptionWithCudaProvider(int deviceId = 0)
+```
+
+**Parameters:**
+- `deviceId` (int): CUDA device ID (default: 0)
+
+**Example:**
+
+```csharp
+var options = SessionOptions.MakeSessionOptionWithCudaProvider(0);
+var session = new InferenceSession("model.onnx", options);
+```
+
+### MakeSessionOptionWithCudaProvider (Advanced)
+
+Creates SessionOptions with detailed CUDA provider options.
+
+```csharp
+public static SessionOptions MakeSessionOptionWithCudaProvider(
+    OrtCUDAProviderOptions cudaProviderOptions)
+```
+
+**Example:**
+
+```csharp
+var cudaOptions = new OrtCUDAProviderOptions();
+cudaOptions.DeviceId = 0;
+cudaOptions.ArenaExtendStrategy = ArenaExtendStrategy.kSameAsRequested;
+
+var options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaOptions);
+```
+
+### MakeSessionOptionWithTensorrtProvider
+
+Creates SessionOptions configured for TensorRT execution.
+
+```csharp
+public static SessionOptions MakeSessionOptionWithTensorrtProvider(int deviceId = 0)
+```
+
+## Properties and Methods
+
+### Graph Optimization Level
+
+Controls the level of graph optimizations applied.
+
+```csharp
+public GraphOptimizationLevel GraphOptimizationLevel { get; set; }
+```
+
+**Values:**
+- `ORT_DISABLE_ALL` - No optimizations
+- `ORT_ENABLE_BASIC` - Basic optimizations (constant folding, redundant node elimination)
+- `ORT_ENABLE_EXTENDED` - Extended optimizations (operator fusion)
+- `ORT_ENABLE_LAYOUT` - Layout transformations
+- `ORT_ENABLE_ALL` - All available optimizations
+
+**Example:**
+
+```csharp
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+```
+
+### Execution Mode
+
+Controls sequential vs parallel execution.
+
+```csharp
+public ExecutionMode ExecutionMode { get; set; }
+```
+
+**Values:**
+- `ORT_SEQUENTIAL` - Execute operators sequentially
+- `ORT_PARALLEL` - Execute operators in parallel when possible
+
+**Example:**
+
+```csharp
+options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+```
+
+### Thread Configuration
+
+#### IntraOpNumThreads
+
+Sets the number of threads used to parallelize execution within nodes.
+
+```csharp
+public int IntraOpNumThreads { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.IntraOpNumThreads = 4;
+```
+
+#### InterOpNumThreads
+
+Sets the number of threads used to parallelize execution between nodes.
+
+```csharp
+public int InterOpNumThreads { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.InterOpNumThreads = 2;
+```
+
+### Memory Optimization
+
+#### EnableCpuMemArena
+
+Enables the CPU memory arena allocator.
+
+```csharp
+public bool EnableCpuMemArena { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.EnableCpuMemArena = true;
+```
+
+#### EnableMemPattern
+
+Enables memory pattern optimization.
+
+```csharp
+public bool EnableMemPattern { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.EnableMemPattern = true;
+```
+
+### Profiling
+
+#### EnableProfiling
+
+Enables profiling for the session.
+
+```csharp
+public bool EnableProfiling { get; set; }
+```
+
+#### ProfileOutputPathPrefix
+
+Sets the output path prefix for profiling data.
+
+```csharp
+public string ProfileOutputPathPrefix { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.EnableProfiling = true;
+options.ProfileOutputPathPrefix = "profile_";
+```
+
+### Logging
+
+#### LogId
+
+Sets the logger ID for the session.
+
+```csharp
+public string LogId { get; set; }
+```
+
+#### LogSeverityLevel
+
+Sets the minimum log severity level.
+
+```csharp
+public OrtLoggingLevel LogSeverityLevel { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.LogId = "MyModel";
+options.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+```
+
+### Optimized Model Output
+
+#### OptimizedModelFilePath
+
+Path to save the optimized model.
+
+```csharp
+public string OptimizedModelFilePath { get; set; }
+```
+
+**Example:**
+
+```csharp
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+options.OptimizedModelFilePath = "model_optimized.onnx";
+```
+
+## Execution Provider Configuration
+
+### AppendExecutionProvider_CPU
+
+Adds CPU execution provider.
+
+```csharp
+public void AppendExecutionProvider_CPU(int useArena = 1)
+```
+
+### AppendExecutionProvider_CUDA
+
+Adds CUDA execution provider.
+
+```csharp
+public void AppendExecutionProvider_CUDA(int deviceId = 0)
+```
+
+**Example:**
+
+```csharp
+var options = new SessionOptions();
+options.AppendExecutionProvider_CUDA(0);
+options.AppendExecutionProvider_CPU(); // Fallback
+```
+
+### AppendExecutionProvider_CUDA (Advanced)
+
+Adds CUDA provider with detailed options.
+
+```csharp
+public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cudaOptions)
+```
+
+### AppendExecutionProvider_DML
+
+Adds DirectML execution provider (Windows only).
+
+```csharp
+public void AppendExecutionProvider_DML(int deviceId = 0)
+```
+
+### AppendExecutionProvider_TensorRT
+
+Adds TensorRT execution provider.
+
+```csharp
+public void AppendExecutionProvider_Tensorrt(int deviceId = 0)
+```
+
+### AppendExecutionProvider_OpenVINO
+
+Adds OpenVINO execution provider.
+
+```csharp
+public void AppendExecutionProvider_OpenVINO(string deviceType = "CPU")
+```
+
+**Example:**
+
+```csharp
+options.AppendExecutionProvider_OpenVINO("GPU");
+```
+
+## Advanced Configuration
+
+### AddConfigEntry
+
+Adds a configuration entry.
+
+```csharp
+public void AddConfigEntry(string key, string value)
+```
+
+**Example:**
+
+```csharp
+options.AddConfigEntry("session.disable_prepacking", "1");
+```
+
+### AddSessionConfigEntry
+
+Adds a session configuration entry.
+
+```csharp
+public void AddSessionConfigEntry(string key, string value)
+```
+
+### AddInitializer
+
+Adds an initializer to the session.
+
+```csharp
+public void AddInitializer(string name, OrtValue ortValue)
+```
+
+### RegisterCustomOpLibrary
+
+Registers a custom operator library.
+
+```csharp
+public void RegisterCustomOpLibrary(string libraryPath)
+```
+
+**Example:**
+
+```csharp
+options.RegisterCustomOpLibrary("custom_ops.dll");
+```
+
+## Complete Examples
+
+### Basic Configuration
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+options.IntraOpNumThreads = 4;
+options.EnableCpuMemArena = true;
+options.EnableMemPattern = true;
+
+var session = new InferenceSession("model.onnx", options);
+```
+
+### GPU Acceleration (CUDA)
+
+```csharp
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+
+try
+{
+    options.AppendExecutionProvider_CUDA(0);
+    Console.WriteLine("Using CUDA GPU");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"CUDA not available: {ex.Message}");
+    options.AppendExecutionProvider_CPU();
+}
+
+var session = new InferenceSession("model.onnx", options);
+```
+
+### Production Configuration
+
+```csharp
+public static SessionOptions CreateProductionOptions()
+{
+    var options = new SessionOptions();
+    
+    // Optimization
+    options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+    options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+    
+    // Threading
+    options.IntraOpNumThreads = Environment.ProcessorCount;
+    options.InterOpNumThreads = 1;
+    
+    // Memory
+    options.EnableCpuMemArena = true;
+    options.EnableMemPattern = true;
+    
+    // Logging
+    options.LogId = "ProductionModel";
+    options.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING;
+    
+    // Execution providers
+    try
+    {
+        options.AppendExecutionProvider_CUDA(0);
+    }
+    catch
+    {
+        options.AppendExecutionProvider_CPU();
+    }
+    
+    return options;
+}
+```
+
+### Model Optimization and Export
+
+```csharp
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+options.OptimizedModelFilePath = "model_optimized.ort";
+
+// This will save the optimized model when creating the session
+using (var session = new InferenceSession("model.onnx", options))
+{
+    Console.WriteLine("Optimized model saved to model_optimized.ort");
+}
+```
+
+### Custom Operators
+
+```csharp
+var options = new SessionOptions();
+
+// Register custom operator library
+options.RegisterCustomOpLibrary("my_custom_ops.dll");
+
+var session = new InferenceSession("model_with_custom_ops.onnx", options);
+```
+
+### Advanced CUDA Configuration
+
+```csharp
+var cudaOptions = new OrtCUDAProviderOptions();
+cudaOptions.DeviceId = 0;
+cudaOptions.CudnnConvAlgoSearch = CudnnConvAlgoSearch.DEFAULT;
+cudaOptions.GpuMemLimit = 2 * 1024 * 1024 * 1024; // 2GB
+cudaOptions.ArenaExtendStrategy = ArenaExtendStrategy.kSameAsRequested;
+
+var options = new SessionOptions();
+options.AppendExecutionProvider_CUDA(cudaOptions);
+
+var session = new InferenceSession("model.onnx", options);
+```
+
+## Performance Tuning Guide
+
+### CPU Optimization
+
+```csharp
+var options = new SessionOptions();
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+options.IntraOpNumThreads = Environment.ProcessorCount;
+options.EnableCpuMemArena = true;
+options.EnableMemPattern = true;
+```
+
+### GPU Optimization
+
+```csharp
+var options = SessionOptions.MakeSessionOptionWithCudaProvider(0);
+options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
+options.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
+```
+
+### Memory-Constrained Environments
+
+```csharp
+var options = new SessionOptions();
+options.EnableCpuMemArena = false; // Disable arena for lower memory
+options.EnableMemPattern = false;
+options.IntraOpNumThreads = 2; // Limit threads
+```
+
+## Best Practices
+
+1. **Set appropriate optimization level**: Use `ORT_ENABLE_ALL` for production
+2. **Configure threading**: Match your workload and hardware
+3. **Enable memory optimizations**: Unless memory-constrained
+4. **Use GPU when available**: Significant performance gains
+5. **Profile your model**: Enable profiling to identify bottlenecks
+6. **Reuse SessionOptions**: Create once, use for multiple sessions
+7. **Always dispose**: SessionOptions implements IDisposable
+
+## See Also
+
+- [InferenceSession](/api/csharp/inference-session)
+- [Execution Providers](/execution-providers/overview)
+- [Performance Tuning](/performance/tuning)

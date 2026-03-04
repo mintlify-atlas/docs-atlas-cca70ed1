@@ -1,0 +1,537 @@
+---
+title: OpenVINO Execution Provider
+description: Optimize ONNX models for Intel hardware with the OpenVINO Execution Provider
+---
+
+# OpenVINO Execution Provider
+
+The OpenVINO Execution Provider enables accelerated inference on Intel CPUs, integrated GPUs, and VPUs (Vision Processing Units) using the Intel OpenVINO toolkit.
+
+## When to Use OpenVINO EP
+
+Use the OpenVINO Execution Provider when:
+
+- You're running on Intel CPUs (especially Xeon or Core processors)
+- You have Intel integrated GPUs (Iris Xe, UHD Graphics)
+- You're using Intel discrete GPUs (Arc, Flex, Max series)
+- You have Intel VPUs or Movidius devices
+- You need optimized inference on Intel hardware
+- You want to deploy on edge devices with Intel processors
+
+## Key Features
+
+- **Intel Hardware Optimization**: Leverages Intel CPU extensions (AVX2, AVX-512, VNNI)
+- **Multi-Device Support**: CPU, GPU, VPU in a single framework
+- **Graph Optimizations**: Advanced model optimizations for Intel hardware
+- **Dynamic Shapes**: Efficient handling of variable input sizes
+- **Precision Modes**: FP32, FP16, INT8 quantization support
+- **Heterogeneous Execution**: Can split workload across different devices
+
+## Prerequisites
+
+### Hardware Support
+
+**CPUs**:
+- Intel Core processors (6th gen and newer recommended)
+- Intel Xeon processors (Skylake and newer)
+- Supports SSE4.2, AVX2, AVX-512, VNNI instructions
+
+**GPUs**:
+- Intel Integrated Graphics (HD Graphics 6xx and newer)
+- Intel Iris Xe Graphics
+- Intel Arc Graphics (A-series)
+- Intel Data Center GPU Flex/Max series
+
+**VPUs**:
+- Intel Movidius Myriad X
+- Intel Vision Processing Units
+
+### Software Requirements
+
+- **OpenVINO Runtime**: 2024.0 or newer recommended
+- **ONNX Runtime with OpenVINO support**
+- **Intel GPU drivers** (for GPU execution)
+
+## Installation
+
+### Python
+
+```bash
+# Install ONNX Runtime
+pip install onnxruntime
+
+# Install OpenVINO Runtime (if not already installed)
+pip install openvino
+
+# Verify OpenVINO is available
+python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+# Should include 'OpenVINOExecutionProvider'
+```
+
+### Using Intel Distribution
+
+```bash
+# Intel optimized Python distribution
+pip install onnxruntime-openvino
+
+# Or build from source with OpenVINO support
+# See: https://onnxruntime.ai/docs/build/eps.html#openvino
+```
+
+### C++
+
+Download pre-built binaries or build from source with OpenVINO support:
+
+```bash
+# Download OpenVINO
+wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.0/linux/
+
+# Build ONNX Runtime with OpenVINO
+git clone https://github.com/microsoft/onnxruntime.git
+cd onnxruntime
+./build.sh --config Release --use_openvino CPU_FP32 --build_shared_lib --parallel
+```
+
+## Basic Usage
+
+### Python
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Create session with OpenVINO provider
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+)
+
+# Prepare input
+input_name = session.get_inputs()[0].name
+x = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+# Run inference
+results = session.run(None, {input_name: x})
+```
+
+### C++
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "OpenVINOExample");
+Ort::SessionOptions session_options;
+
+// Add OpenVINO provider for CPU with FP32 precision
+Ort::ThrowOnError(
+    OrtSessionOptionsAppendExecutionProvider_OpenVINO(
+        session_options, "CPU_FP32"
+    )
+);
+
+Ort::Session session(env, "model.onnx", session_options);
+
+// Run inference
+auto output_tensors = session.Run(Ort::RunOptions{nullptr}, 
+                                   input_names.data(), 
+                                   &input_tensor, 1,
+                                   output_names.data(), 1);
+```
+
+### C#
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+var sessionOptions = new SessionOptions();
+sessionOptions.AppendExecutionProvider_OpenVINO("CPU_FP32");
+
+using var session = new InferenceSession("model.onnx", sessionOptions);
+```
+
+## Configuration Options
+
+### Device Types
+
+OpenVINO supports multiple device types with different precision modes:
+
+```python
+import onnxruntime as ort
+
+# CPU with FP32 precision (default)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[('OpenVINOExecutionProvider', {
+        'device_type': 'CPU_FP32'
+    })]
+)
+
+# CPU with FP16 precision (if supported)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[('OpenVINOExecutionProvider', {
+        'device_type': 'CPU_FP16'
+    })]
+)
+
+# Intel GPU with FP32 precision
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[('OpenVINOExecutionProvider', {
+        'device_type': 'GPU_FP32'
+    })]
+)
+
+# Intel GPU with FP16 precision (better performance)
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[('OpenVINOExecutionProvider', {
+        'device_type': 'GPU_FP16'
+    })]
+)
+
+# VPU/Myriad device
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[('OpenVINOExecutionProvider', {
+        'device_type': 'MYRIAD_FP16'
+    })]
+)
+```
+
+### Available Device Types
+
+| Device Type | Description | Typical Use Case |
+|-------------|-------------|------------------|
+| `CPU_FP32` | CPU with 32-bit floating point | General purpose, development |
+| `CPU_FP16` | CPU with 16-bit floating point | Memory-constrained systems |
+| `GPU_FP32` | Intel GPU with 32-bit float | GPU acceleration, balanced |
+| `GPU_FP16` | Intel GPU with 16-bit float | Maximum GPU performance |
+| `MYRIAD_FP16` | Intel VPU/Movidius | Edge devices, low power |
+| `HETERO:GPU,CPU` | Heterogeneous execution | Fallback support |
+| `MULTI:GPU,CPU` | Multi-device execution | Load balancing |
+
+### Advanced Configuration
+
+```python
+import onnxruntime as ort
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            # Device selection
+            'device_type': 'GPU_FP16',
+            
+            # Performance hints
+            'enable_vpu_fast_compile': False,
+            'num_of_threads': 8,
+            
+            # Cache settings
+            'enable_opencl_throttling': False,
+            'cache_dir': '/tmp/openvino_cache',
+        }
+    )]
+)
+```
+
+## Device Selection
+
+### Querying Available Devices
+
+```python
+import onnxruntime as ort
+from onnxruntime.capi import _pybind_state as C
+
+# Check available providers
+available = ort.get_available_providers()
+if 'OpenVINOExecutionProvider' in available:
+    print("OpenVINO is available")
+    
+# To query specific OpenVINO devices, use OpenVINO Python API
+try:
+    from openvino.runtime import Core
+    core = Core()
+    devices = core.available_devices
+    print(f"Available OpenVINO devices: {devices}")
+    for device in devices:
+        print(f"{device}: {core.get_property(device, 'FULL_DEVICE_NAME')}")
+except ImportError:
+    print("OpenVINO Python API not installed")
+```
+
+### CPU Optimization
+
+```python
+import onnxruntime as ort
+
+# Optimize for Intel CPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'CPU_FP32',
+            'num_of_threads': 0,  # Auto-detect optimal thread count
+        }
+    )]
+)
+```
+
+### GPU Optimization
+
+```python
+import onnxruntime as ort
+
+# Optimize for Intel GPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'GPU_FP16',  # FP16 for better performance
+            'enable_opencl_throttling': False,
+        }
+    )]
+)
+```
+
+## Heterogeneous Execution
+
+Split workload across multiple devices:
+
+```python
+import onnxruntime as ort
+
+# Try GPU first, fallback to CPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'HETERO:GPU,CPU'
+        }
+    )]
+)
+
+# Multi-device for load balancing
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'MULTI:GPU,CPU'
+        }
+    )]
+)
+```
+
+## Performance Optimization
+
+### Model Caching
+
+OpenVINO compiles models on first run. Enable caching to speed up subsequent loads:
+
+```python
+import onnxruntime as ort
+import os
+
+# Set cache directory
+os.makedirs('/tmp/openvino_cache', exist_ok=True)
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'CPU_FP32',
+            'cache_dir': '/tmp/openvino_cache',
+        }
+    )]
+)
+
+# First run: compiles and caches model
+result = session.run(None, {input_name: x})
+
+# Subsequent runs: loads from cache (much faster)
+```
+
+### Dynamic Shapes
+
+OpenVINO handles dynamic shapes efficiently:
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession(
+    "model_dynamic.onnx",
+    providers=['OpenVINOExecutionProvider']
+)
+
+# Run with different input sizes
+for batch_size in [1, 4, 8, 16]:
+    x = np.random.randn(batch_size, 3, 224, 224).astype(np.float32)
+    result = session.run(None, {input_name: x})
+    print(f"Batch size {batch_size}: processed")
+```
+
+### Quantization (INT8)
+
+For INT8 models, OpenVINO provides automatic optimization:
+
+```python
+import onnxruntime as ort
+
+# Load quantized (INT8) model
+session = ort.InferenceSession(
+    "model_int8.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'CPU_FP32',  # Will use INT8 ops if available
+        }
+    )]
+)
+```
+
+## Platform Support
+
+| Platform | Architecture | Support |
+|----------|--------------|----------|
+| Linux | x64 | ✅ Full |
+| Linux | ARM64 | ✅ Limited |
+| Windows | x64 | ✅ Full |
+| Windows | ARM64 | ⚠️ Experimental |
+| macOS | x64 | ✅ Full |
+| macOS | ARM64 | ⚠️ Limited |
+
+## Use Cases
+
+### Edge Deployment
+
+```python
+import onnxruntime as ort
+
+# Optimized for edge device with Intel CPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'CPU_FP32',
+            'num_of_threads': 4,  # Limit threads on edge device
+        }
+    )]
+)
+```
+
+### Cloud Inference (Intel Xeon)
+
+```python
+import onnxruntime as ort
+
+# Maximize throughput on Xeon server
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'CPU_FP32',
+            'num_of_threads': 0,  # Use all cores
+        }
+    )]
+)
+```
+
+### Intel Arc GPU
+
+```python
+import onnxruntime as ort
+
+# Leverage Intel discrete GPU
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'GPU_FP16',
+        }
+    )]
+)
+```
+
+## Performance Comparison
+
+Typical performance improvements over standard CPU execution:
+
+| Hardware | Precision | Speedup | Notes |
+|----------|-----------|---------|-------|
+| Intel Xeon (AVX-512) | FP32 | 2-4x | vs standard CPU EP |
+| Intel Core i7/i9 | FP32 | 1.5-3x | vs standard CPU EP |
+| Intel Iris Xe GPU | FP16 | 3-6x | vs CPU |
+| Intel Arc GPU | FP16 | 5-10x | vs CPU |
+| Movidius VPU | FP16 | 2-5x | Low power |
+
+## Troubleshooting
+
+### Provider Not Available
+
+```python
+import onnxruntime as ort
+
+print(ort.get_available_providers())
+# If 'OpenVINOExecutionProvider' is missing:
+# 1. Install OpenVINO: pip install openvino
+# 2. Check ONNX Runtime build has OpenVINO support
+# 3. Verify Intel hardware is present
+```
+
+### GPU Not Detected
+
+```bash
+# Check Intel GPU drivers (Linux)
+sudo apt-get install intel-opencl-icd
+
+# Check available devices
+python -c "from openvino.runtime import Core; print(Core().available_devices)"
+```
+
+### Performance Issues
+
+```python
+# Enable verbose logging
+import onnxruntime as ort
+ort.set_default_logger_severity(0)  # Verbose
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['OpenVINOExecutionProvider']
+)
+
+# Check which device is being used
+print(session.get_providers())
+```
+
+### Compilation Errors
+
+```python
+# Some models may not be fully supported
+# Use heterogeneous execution as fallback
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[(
+        'OpenVINOExecutionProvider', {
+            'device_type': 'HETERO:CPU,GPU'
+        }
+    ), 'CPUExecutionProvider']
+)
+```
+
+## Comparison with Other Providers
+
+| Feature | OpenVINO | oneDNN | CUDA |
+|---------|----------|--------|------|
+| Intel CPU | Excellent | Good | N/A |
+| Intel GPU | Excellent | N/A | N/A |
+| NVIDIA GPU | N/A | N/A | Excellent |
+| Edge Devices | Excellent | Limited | Limited |
+| Setup Complexity | Moderate | Easy | Moderate |
+
+## Next Steps
+
+- Learn about [model optimization for OpenVINO](/inference/model-optimization)
+- Compare with [DirectML](/execution-providers/directml) for cross-vendor support
+- Explore [INT8 quantization](/model-conversion/quantization) for better performance
+- See [OpenVINO documentation](https://docs.openvino.ai/) for advanced features

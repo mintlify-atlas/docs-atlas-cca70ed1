@@ -1,0 +1,591 @@
+---
+title: Node.js-Specific APIs
+description: ONNX Runtime Node.js-specific APIs and configurations
+---
+
+ONNX Runtime for Node.js provides server-side machine learning capabilities with support for CPU and GPU acceleration.
+
+## Installation
+
+### CPU Version
+
+```bash
+npm install onnxruntime-node
+```
+
+### GPU Version (CUDA)
+
+```bash
+npm install onnxruntime-node-gpu
+```
+
+## Importing
+
+### CommonJS
+
+```javascript
+const ort = require('onnxruntime-node');
+```
+
+### ES Modules
+
+```javascript
+import * as ort from 'onnxruntime-node';
+```
+
+## Loading Models
+
+### From File Path
+
+```javascript
+const session = await ort.InferenceSession.create('./model.onnx');
+```
+
+### From Buffer
+
+```javascript
+const fs = require('fs');
+
+const modelBuffer = fs.readFileSync('./model.onnx');
+const session = await ort.InferenceSession.create(modelBuffer);
+```
+
+### Async File Loading
+
+```javascript
+const fs = require('fs').promises;
+
+const modelBuffer = await fs.readFile('./model.onnx');
+const session = await ort.InferenceSession.create(modelBuffer);
+```
+
+## Execution Providers
+
+### CPU Provider
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['cpu']
+});
+```
+
+### CUDA Provider
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'cuda',
+      deviceId: 0
+    },
+    'cpu'  // Fallback
+  ]
+});
+```
+
+### TensorRT Provider
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: [
+    {
+      name: 'tensorrt',
+      deviceId: 0
+    },
+    'cuda',
+    'cpu'
+  ]
+});
+```
+
+### CoreML Provider (macOS)
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['coreml', 'cpu']
+});
+```
+
+### DirectML Provider (Windows)
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  executionProviders: ['dml', 'cpu']
+});
+```
+
+## Session Configuration
+
+### Thread Configuration
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  intraOpNumThreads: 4,
+  interOpNumThreads: 1,
+  executionMode: 'parallel'
+});
+```
+
+### Graph Optimization
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  graphOptimizationLevel: 'all',
+  optimizedModelFilePath: './model_optimized.onnx'
+});
+```
+
+### Memory Configuration
+
+```javascript
+const session = await ort.InferenceSession.create('model.onnx', {
+  enableCpuMemArena: true,
+  enableMemPattern: true
+});
+```
+
+## Complete Node.js Server Example
+
+### Express API Server
+
+```javascript
+const express = require('express');
+const ort = require('onnxruntime-node');
+const multer = require('multer');
+const sharp = require('sharp');
+
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+let session;
+
+// Initialize model on startup
+async function initializeModel() {
+  session = await ort.InferenceSession.create('./resnet50.onnx', {
+    executionProviders: ['cuda', 'cpu'],
+    graphOptimizationLevel: 'all',
+    intraOpNumThreads: 4
+  });
+  
+  console.log('Model loaded successfully');
+  console.log('Input names:', session.inputNames);
+  console.log('Output names:', session.outputNames);
+}
+
+// Preprocess image
+async function preprocessImage(buffer) {
+  // Resize and normalize image
+  const { data, info } = await sharp(buffer)
+    .resize(224, 224)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  // Convert to float32 and normalize
+  const pixels = new Float32Array(3 * 224 * 224);
+  const mean = [0.485, 0.456, 0.406];
+  const std = [0.229, 0.224, 0.225];
+  
+  for (let i = 0; i < 224 * 224; i++) {
+    pixels[i] = (data[i * 3] / 255 - mean[0]) / std[0];
+    pixels[224 * 224 + i] = (data[i * 3 + 1] / 255 - mean[1]) / std[1];
+    pixels[224 * 224 * 2 + i] = (data[i * 3 + 2] / 255 - mean[2]) / std[2];
+  }
+  
+  return new ort.Tensor('float32', pixels, [1, 3, 224, 224]);
+}
+
+// Inference endpoint
+app.post('/predict', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image provided' });
+    }
+    
+    // Preprocess
+    const tensor = await preprocessImage(req.file.buffer);
+    
+    // Run inference
+    const feeds = { [session.inputNames[0]]: tensor };
+    const results = await session.run(feeds);
+    
+    // Get predictions
+    const output = results[session.outputNames[0]];
+    const predictions = Array.from(output.data)
+      .map((prob, idx) => ({ class: idx, probability: prob }))
+      .sort((a, b) => b.probability - a.probability)
+      .slice(0, 5);
+    
+    res.json({ predictions });
+    
+  } catch (error) {
+    console.error('Inference error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', modelLoaded: !!session });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+initializeModel().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+});
+```
+
+### Batch Processing Script
+
+```javascript
+const ort = require('onnxruntime-node');
+const fs = require('fs').promises;
+const path = require('path');
+
+class BatchProcessor {
+  constructor(modelPath, options = {}) {
+    this.modelPath = modelPath;
+    this.options = options;
+    this.session = null;
+  }
+  
+  async initialize() {
+    this.session = await ort.InferenceSession.create(this.modelPath, {
+      executionProviders: ['cuda', 'cpu'],
+      intraOpNumThreads: 8,
+      graphOptimizationLevel: 'all',
+      ...this.options
+    });
+    
+    console.log('Model initialized');
+  }
+  
+  async processFile(inputPath) {
+    const data = await fs.readFile(inputPath);
+    // Process data...
+    const tensor = this.createTensor(data);
+    
+    const feeds = { [this.session.inputNames[0]]: tensor };
+    const results = await this.session.run(feeds);
+    
+    return results[this.session.outputNames[0]].data;
+  }
+  
+  async processBatch(inputDir, outputDir) {
+    await fs.mkdir(outputDir, { recursive: true });
+    
+    const files = await fs.readdir(inputDir);
+    console.log(`Processing ${files.length} files...`);
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      console.log(`Processing ${i + 1}/${files.length}: ${file}`);
+      
+      const inputPath = path.join(inputDir, file);
+      const result = await this.processFile(inputPath);
+      
+      const outputPath = path.join(outputDir, `${file}.json`);
+      await fs.writeFile(outputPath, JSON.stringify(result));
+    }
+    
+    console.log('Batch processing complete');
+  }
+  
+  createTensor(data) {
+    // Convert data to tensor
+    // Implementation depends on your use case
+    return new ort.Tensor('float32', new Float32Array(data), [1, data.length]);
+  }
+}
+
+// Usage
+(async () => {
+  const processor = new BatchProcessor('./model.onnx');
+  await processor.initialize();
+  await processor.processBatch('./input', './output');
+})();
+```
+
+### Worker Threads for Parallel Processing
+
+```javascript
+const { Worker } = require('worker_threads');
+const os = require('os');
+
+class ParallelProcessor {
+  constructor(modelPath, numWorkers = os.cpus().length) {
+    this.modelPath = modelPath;
+    this.numWorkers = numWorkers;
+    this.workers = [];
+    this.taskQueue = [];
+    this.activeWorkers = 0;
+  }
+  
+  async initialize() {
+    const workerCode = `
+      const ort = require('onnxruntime-node');
+      const { parentPort } = require('worker_threads');
+      
+      let session;
+      
+      parentPort.on('message', async (message) => {
+        if (message.type === 'init') {
+          session = await ort.InferenceSession.create(message.modelPath);
+          parentPort.postMessage({ type: 'ready' });
+        } else if (message.type === 'infer') {
+          try {
+            const tensor = new ort.Tensor(
+              message.tensor.type,
+              new Float32Array(message.tensor.data),
+              message.tensor.dims
+            );
+            
+            const feeds = { [session.inputNames[0]]: tensor };
+            const results = await session.run(feeds);
+            const output = results[session.outputNames[0]];
+            
+            parentPort.postMessage({
+              type: 'result',
+              id: message.id,
+              data: Array.from(output.data)
+            });
+          } catch (error) {
+            parentPort.postMessage({
+              type: 'error',
+              id: message.id,
+              error: error.message
+            });
+          }
+        }
+      });
+    `;
+    
+    // Create workers
+    for (let i = 0; i < this.numWorkers; i++) {
+      const worker = new Worker(workerCode, { eval: true });
+      
+      worker.on('message', (message) => this.handleWorkerMessage(worker, message));
+      worker.postMessage({ type: 'init', modelPath: this.modelPath });
+      
+      this.workers.push({ worker, ready: false, busy: false });
+    }
+    
+    // Wait for all workers to be ready
+    await new Promise(resolve => {
+      const checkReady = () => {
+        if (this.workers.every(w => w.ready)) {
+          resolve();
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+    });
+    
+    console.log(`${this.numWorkers} workers initialized`);
+  }
+  
+  handleWorkerMessage(worker, message) {
+    const workerInfo = this.workers.find(w => w.worker === worker);
+    
+    if (message.type === 'ready') {
+      workerInfo.ready = true;
+    } else if (message.type === 'result' || message.type === 'error') {
+      workerInfo.busy = false;
+      this.activeWorkers--;
+      
+      // Handle result
+      const task = this.taskQueue.find(t => t.id === message.id);
+      if (task) {
+        if (message.type === 'result') {
+          task.resolve(message.data);
+        } else {
+          task.reject(new Error(message.error));
+        }
+      }
+      
+      // Process next task
+      this.processNextTask();
+    }
+  }
+  
+  async infer(tensor) {
+    return new Promise((resolve, reject) => {
+      const id = Date.now() + Math.random();
+      this.taskQueue.push({ id, tensor, resolve, reject });
+      this.processNextTask();
+    });
+  }
+  
+  processNextTask() {
+    // Find available worker
+    const availableWorker = this.workers.find(w => w.ready && !w.busy);
+    if (!availableWorker) return;
+    
+    // Find pending task
+    const task = this.taskQueue.find(t => !t.processing);
+    if (!task) return;
+    
+    task.processing = true;
+    availableWorker.busy = true;
+    this.activeWorkers++;
+    
+    // Send task to worker
+    availableWorker.worker.postMessage({
+      type: 'infer',
+      id: task.id,
+      tensor: {
+        type: task.tensor.type,
+        data: Array.from(task.tensor.data),
+        dims: task.tensor.dims
+      }
+    });
+  }
+  
+  async shutdown() {
+    for (const { worker } of this.workers) {
+      await worker.terminate();
+    }
+  }
+}
+
+// Usage
+(async () => {
+  const processor = new ParallelProcessor('./model.onnx', 4);
+  await processor.initialize();
+  
+  const inputs = [
+    new ort.Tensor('float32', new Float32Array([1, 2, 3]), [1, 3]),
+    new ort.Tensor('float32', new Float32Array([4, 5, 6]), [1, 3]),
+    new ort.Tensor('float32', new Float32Array([7, 8, 9]), [1, 3])
+  ];
+  
+  const results = await Promise.all(
+    inputs.map(tensor => processor.infer(tensor))
+  );
+  
+  console.log('Results:', results);
+  await processor.shutdown();
+})();
+```
+
+## File System Integration
+
+### Processing Directory of Files
+
+```javascript
+const ort = require('onnxruntime-node');
+const fs = require('fs').promises;
+const path = require('path');
+
+async function processDirectory(inputDir, outputDir, session) {
+  const files = await fs.readdir(inputDir);
+  
+  for (const file of files) {
+    const inputPath = path.join(inputDir, file);
+    const stats = await fs.stat(inputPath);
+    
+    if (stats.isFile()) {
+      const data = await fs.readFile(inputPath);
+      // Process file...
+      const result = await processData(data, session);
+      
+      const outputPath = path.join(outputDir, `${file}.result.json`);
+      await fs.writeFile(outputPath, JSON.stringify(result, null, 2));
+    }
+  }
+}
+```
+
+## Environment Variables
+
+```javascript
+// Set number of threads via environment
+process.env.ORT_NUM_THREADS = '4';
+
+// Disable telemetry
+process.env.ORT_TELEMETRY = '0';
+
+// Set log level
+process.env.ORT_LOG_LEVEL = 'warning';
+```
+
+## Performance Monitoring
+
+```javascript
+class PerformanceMonitor {
+  constructor(session) {
+    this.session = session;
+    this.stats = {
+      inferences: 0,
+      totalTime: 0,
+      times: []
+    };
+  }
+  
+  async run(feeds) {
+    const start = process.hrtime.bigint();
+    const results = await this.session.run(feeds);
+    const end = process.hrtime.bigint();
+    
+    const timeMs = Number(end - start) / 1000000;
+    this.stats.inferences++;
+    this.stats.totalTime += timeMs;
+    this.stats.times.push(timeMs);
+    
+    return results;
+  }
+  
+  getStats() {
+    return {
+      count: this.stats.inferences,
+      avgTime: this.stats.totalTime / this.stats.inferences,
+      minTime: Math.min(...this.stats.times),
+      maxTime: Math.max(...this.stats.times),
+      totalTime: this.stats.totalTime
+    };
+  }
+  
+  reset() {
+    this.stats = { inferences: 0, totalTime: 0, times: [] };
+  }
+}
+
+// Usage
+const monitor = new PerformanceMonitor(session);
+for (let i = 0; i < 100; i++) {
+  await monitor.run(feeds);
+}
+console.log('Performance stats:', monitor.getStats());
+```
+
+## Error Handling
+
+```javascript
+try {
+  const session = await ort.InferenceSession.create('model.onnx', {
+    executionProviders: ['cuda', 'cpu']
+  });
+  
+  const results = await session.run(feeds);
+  
+} catch (error) {
+  if (error.message.includes('CUDA')) {
+    console.error('CUDA error, falling back to CPU');
+    // Retry with CPU only
+  } else if (error.message.includes('model')) {
+    console.error('Model loading error:', error.message);
+  } else {
+    console.error('Inference error:', error);
+  }
+}
+```
+
+## See Also
+
+- [InferenceSession](/api/javascript/inference-session)
+- [Tensor](/api/javascript/tensor)
+- [Web APIs](/api/javascript/web)
+- [Execution Providers](/execution-providers/overview)

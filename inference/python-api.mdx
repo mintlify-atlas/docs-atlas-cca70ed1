@@ -1,0 +1,451 @@
+---
+title: Python Inference API
+description: Complete guide to running ONNX model inference in Python with real code examples
+---
+
+# Python Inference API
+
+Learn how to run ONNX model inference in Python using the ONNX Runtime API. This guide includes real API signatures and working code examples.
+
+## Installation
+
+```bash
+pip install onnxruntime
+
+# For GPU support (CUDA)
+pip install onnxruntime-gpu
+```
+
+## Quick Start
+
+Here's a minimal example to run inference:
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+# Create inference session
+session = ort.InferenceSession("model.onnx")
+
+# Get input name
+input_name = session.get_inputs()[0].name
+
+# Prepare input data
+input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+# Run inference
+outputs = session.run(None, {input_name: input_data})
+
+print("Output shape:", outputs[0].shape)
+```
+
+## InferenceSession Class
+
+### Creating a Session
+
+**From file path:**
+
+```python
+import onnxruntime as ort
+
+# Basic usage
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+```
+
+**From bytes:**
+
+```python
+with open("model.onnx", "rb") as f:
+    model_bytes = f.read()
+
+session = ort.InferenceSession(model_bytes)
+```
+
+**With session options:**
+
+```python
+sess_options = ort.SessionOptions()
+sess_options.intra_op_num_threads = 4
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+sess_options.enable_profiling = True
+
+session = ort.InferenceSession(
+    "model.onnx",
+    sess_options=sess_options,
+    providers=['CPUExecutionProvider']
+)
+```
+
+### Session Methods
+
+#### run()
+
+Execute the model with input data.
+
+```python
+outputs = session.run(
+    output_names=None,  # None = all outputs, or list of output names
+    input_feed={"input": input_array},  # Dict of input_name: numpy_array
+    run_options=None  # Optional RunOptions
+)
+```
+
+**Complete example:**
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession("model.onnx")
+
+# Get input/output metadata
+input_name = session.get_inputs()[0].name
+output_name = session.get_outputs()[0].name
+
+# Prepare inputs
+x = np.random.randn(1, 3, 224, 224).astype(np.float32)
+
+# Run inference - get all outputs
+outputs = session.run(None, {input_name: x})
+
+# Or request specific outputs
+outputs = session.run([output_name], {input_name: x})
+
+print(f"Output: {outputs[0]}")
+```
+
+#### get_inputs()
+
+Get model input metadata.
+
+```python
+inputs = session.get_inputs()
+for input_meta in inputs:
+    print(f"Name: {input_meta.name}")
+    print(f"Shape: {input_meta.shape}")
+    print(f"Type: {input_meta.type}")
+```
+
+#### get_outputs()
+
+Get model output metadata.
+
+```python
+outputs = session.get_outputs()
+for output_meta in outputs:
+    print(f"Name: {output_meta.name}")
+    print(f"Shape: {output_meta.shape}")
+    print(f"Type: {output_meta.type}")
+```
+
+#### get_modelmeta()
+
+Get model metadata.
+
+```python
+meta = session.get_modelmeta()
+print(f"Producer: {meta.producer_name}")
+print(f"Graph name: {meta.graph_name}")
+print(f"Domain: {meta.domain}")
+print(f"Version: {meta.version}")
+print(f"Custom metadata: {meta.custom_metadata_map}")
+```
+
+## SessionOptions
+
+Configure session behavior before creating the session.
+
+```python
+sess_options = ort.SessionOptions()
+
+# Graph optimization
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+
+# Threading
+sess_options.intra_op_num_threads = 4
+sess_options.inter_op_num_threads = 2
+
+# Execution mode
+sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+# Memory optimization
+sess_options.enable_cpu_mem_arena = True
+sess_options.enable_mem_pattern = True
+
+# Profiling
+sess_options.enable_profiling = True
+sess_options.profile_file_prefix = "ort_profile"
+
+# Log settings
+sess_options.log_severity_level = 2  # 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal
+sess_options.log_verbosity_level = 0
+
+# Save optimized model
+sess_options.optimized_model_filepath = "optimized_model.onnx"
+```
+
+### Graph Optimization Levels
+
+```python
+ort.GraphOptimizationLevel.ORT_DISABLE_ALL      # No optimizations
+ort.GraphOptimizationLevel.ORT_ENABLE_BASIC     # Basic optimizations (constant folding, etc.)
+ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # Extended optimizations (operator fusion, etc.)
+ort.GraphOptimizationLevel.ORT_ENABLE_ALL       # All optimizations including layout optimization
+```
+
+## RunOptions
+
+Configure individual inference runs.
+
+```python
+run_options = ort.RunOptions()
+run_options.log_severity_level = 2
+run_options.log_verbosity_level = 0
+run_options.run_tag = "my_inference_run"
+run_options.terminate = False  # Set to True to terminate inference
+
+outputs = session.run(None, {input_name: x}, run_options)
+```
+
+## Execution Providers
+
+### Checking Available Providers
+
+```python
+import onnxruntime as ort
+
+# Get all available providers
+available_providers = ort.get_available_providers()
+print("Available providers:", available_providers)
+```
+
+### Setting Providers
+
+**Priority order:**
+
+```python
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        'CUDAExecutionProvider',
+        'CPUExecutionProvider'
+    ]
+)
+```
+
+**With provider options:**
+
+```python
+# CUDA provider options
+cuda_options = {
+    'device_id': 0,
+    'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+    'arena_extend_strategy': 'kNextPowerOfTwo',
+    'cudnn_conv_algo_search': 'EXHAUSTIVE',
+}
+
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ('CUDAExecutionProvider', cuda_options),
+        'CPUExecutionProvider'
+    ]
+)
+```
+
+**Check active provider:**
+
+```python
+print("Using providers:", session.get_providers())
+```
+
+### Common Providers
+
+```python
+# CPU (default)
+providers = ['CPUExecutionProvider']
+
+# NVIDIA GPU
+providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+
+# TensorRT
+providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+
+# DirectML (Windows)
+providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+
+# CoreML (macOS/iOS)
+providers = ['CoreMLExecutionProvider', 'CPUExecutionProvider']
+
+# OpenVINO (Intel)
+providers = ['OpenVINOExecutionProvider', 'CPUExecutionProvider']
+```
+
+## Working with IOBinding
+
+Use IOBinding for zero-copy inference with GPU tensors.
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+session = ort.InferenceSession("model.onnx", providers=['CUDAExecutionProvider'])
+
+# Create IO binding
+io_binding = session.io_binding()
+
+# Bind input to GPU
+input_name = session.get_inputs()[0].name
+x_numpy = np.random.randn(1, 3, 224, 224).astype(np.float32)
+x_ortvalue = ort.OrtValue.ortvalue_from_numpy(x_numpy, 'cuda', 0)
+io_binding.bind_input(
+    name=input_name,
+    device_type='cuda',
+    device_id=0,
+    element_type=np.float32,
+    shape=x_ortvalue.shape(),
+    buffer_ptr=x_ortvalue.data_ptr()
+)
+
+# Bind output to GPU
+output_name = session.get_outputs()[0].name
+io_binding.bind_output(output_name, 'cuda')
+
+# Run with binding
+session.run_with_iobinding(io_binding)
+
+# Get output
+outputs = io_binding.get_outputs()
+result = outputs[0].numpy()
+print(f"Output shape: {result.shape}")
+```
+
+## Complete Example: Image Classification
+
+```python
+import onnxruntime as ort
+import numpy as np
+from PIL import Image
+
+def preprocess_image(image_path, size=(224, 224)):
+    """Preprocess image for ResNet/MobileNet models."""
+    img = Image.open(image_path).convert('RGB')
+    img = img.resize(size)
+    img_data = np.array(img).astype(np.float32)
+    
+    # Normalize to [0, 1]
+    img_data = img_data / 255.0
+    
+    # Normalize with ImageNet mean/std
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    img_data = (img_data - mean) / std
+    
+    # Convert HWC to CHW format
+    img_data = np.transpose(img_data, (2, 0, 1))
+    
+    # Add batch dimension
+    img_data = np.expand_dims(img_data, axis=0)
+    
+    return img_data.astype(np.float32)
+
+def run_inference(model_path, image_path):
+    """Run inference on an image."""
+    # Create session with GPU support
+    sess_options = ort.SessionOptions()
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    
+    session = ort.InferenceSession(
+        model_path,
+        sess_options=sess_options,
+        providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+    )
+    
+    print(f"Using provider: {session.get_providers()}")
+    
+    # Get model metadata
+    input_meta = session.get_inputs()[0]
+    print(f"Input: {input_meta.name}, Shape: {input_meta.shape}, Type: {input_meta.type}")
+    
+    output_meta = session.get_outputs()[0]
+    print(f"Output: {output_meta.name}, Shape: {output_meta.shape}, Type: {output_meta.type}")
+    
+    # Preprocess image
+    input_data = preprocess_image(image_path)
+    print(f"Input data shape: {input_data.shape}")
+    
+    # Run inference
+    outputs = session.run(
+        [output_meta.name],
+        {input_meta.name: input_data}
+    )
+    
+    # Get predictions
+    predictions = outputs[0][0]
+    top5_idx = np.argsort(predictions)[-5:][::-1]
+    
+    print("\nTop 5 predictions:")
+    for idx in top5_idx:
+        print(f"  Class {idx}: {predictions[idx]:.4f}")
+    
+    return predictions
+
+if __name__ == "__main__":
+    predictions = run_inference(
+        model_path="resnet50.onnx",
+        image_path="cat.jpg"
+    )
+```
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Use the Right Execution Provider">
+    Always specify execution providers in priority order. GPU providers like CUDA or TensorRT can provide 10-100x speedups for compute-intensive models.
+  </Accordion>
+
+  <Accordion title="Enable Graph Optimization">
+    Set `graph_optimization_level` to `ORT_ENABLE_ALL` for maximum performance. The runtime will fuse operators and optimize the graph.
+  </Accordion>
+
+  <Accordion title="Reuse Sessions">
+    Creating a session is expensive. Create once and reuse for multiple inferences.
+  </Accordion>
+
+  <Accordion title="Use IOBinding for GPU">
+    When using GPU providers, IOBinding eliminates CPU-GPU memory copies for better performance.
+  </Accordion>
+
+  <Accordion title="Batch Inputs">
+    Process multiple inputs in a single batch when possible to maximize hardware utilization.
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+```python
+import onnxruntime as ort
+
+try:
+    session = ort.InferenceSession("model.onnx")
+    outputs = session.run(None, {"input": input_data})
+except ort.OrtException as e:
+    print(f"ONNX Runtime error: {e}")
+except Exception as e:
+    print(f"Error: {e}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Model Optimization" icon="gauge-high" href="/inference/model-optimization">
+    Learn how to optimize models for production
+  </Card>
+  
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers/overview">
+    Configure hardware acceleration
+  </Card>
+</CardGroup>

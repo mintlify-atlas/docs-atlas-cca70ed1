@@ -1,0 +1,590 @@
+---
+title: Execution Providers in C/C++
+description: Configuring GPU acceleration and specialized hardware execution providers
+---
+
+# Execution Providers in C/C++
+
+Execution Providers (EPs) enable ONNX Runtime to execute models on different hardware accelerators like GPUs, NPUs, and other specialized devices.
+
+## Available Providers
+
+### GetAvailableProviders
+
+```c
+OrtStatus* (*GetAvailableProviders)(char*** out_ptr, int* provider_length);
+```
+
+Get the list of all available execution providers.
+
+**Parameters:**
+- `out_ptr`: Array of provider name strings (must be freed with `ReleaseAvailableProviders`)
+- `provider_length`: Number of providers
+
+**Returns:** `NULL` on success
+
+**Example:**
+```c
+char** providers;
+int num_providers;
+api->GetAvailableProviders(&providers, &num_providers);
+
+printf("Available providers:\n");
+for (int i = 0; i < num_providers; i++) {
+    printf("  %s\n", providers[i]);
+}
+
+api->ReleaseAvailableProviders(providers, num_providers);
+```
+
+**Note:** A provider being "available" doesn't guarantee it's usable. It may fail if system dependencies are missing.
+
+## CUDA Execution Provider
+
+### OrtCUDAProviderOptions
+
+```c
+typedef struct OrtCUDAProviderOptions {
+    int device_id;                        // CUDA device ID (default: 0)
+    OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cuDNN algorithm search
+    size_t gpu_mem_limit;                 // GPU memory limit (SIZE_MAX = unlimited)
+    int arena_extend_strategy;            // 0=kNextPowerOfTwo, 1=kSameAsRequested
+    int do_copy_in_default_stream;        // Use same stream for copy and compute
+    int has_user_compute_stream;          // Has user-provided compute stream
+    void* user_compute_stream;            // User compute stream (if has_user_compute_stream=1)
+    OrtArenaCfg* default_memory_arena_cfg;
+    int tunable_op_enable;                // Enable TunableOp
+    int tunable_op_tuning_enable;         // Enable TunableOp tuning
+    int tunable_op_max_tuning_duration_ms;
+} OrtCUDAProviderOptions;
+```
+
+**cuDNN Convolution Algorithm Search:**
+```c
+typedef enum OrtCudnnConvAlgoSearch {
+    OrtCudnnConvAlgoSearchExhaustive,  // Exhaustive benchmarking
+    OrtCudnnConvAlgoSearchHeuristic,   // Heuristic-based search
+    OrtCudnnConvAlgoSearchDefault,     // Default IMPLICIT_PRECOMP_GEMM
+} OrtCudnnConvAlgoSearch;
+```
+
+### SessionOptionsAppendExecutionProvider_CUDA
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider_CUDA)(
+    OrtSessionOptions* options,
+    const OrtCUDAProviderOptions* cuda_options);
+```
+
+Append CUDA execution provider to session options.
+
+**Parameters:**
+- `options`: Session options
+- `cuda_options`: CUDA provider configuration
+
+**Returns:** Error if CUDA is not available
+
+**Example:**
+
+<CodeGroup>
+```c C API
+OrtCUDAProviderOptions cuda_options = {
+    .device_id = 0,
+    .cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive,
+    .gpu_mem_limit = SIZE_MAX,
+    .arena_extend_strategy = 0,
+    .do_copy_in_default_stream = 1,
+    .has_user_compute_stream = 0,
+    .user_compute_stream = NULL,
+    .default_memory_arena_cfg = NULL,
+    .tunable_op_enable = 0,
+    .tunable_op_tuning_enable = 0,
+    .tunable_op_max_tuning_duration_ms = 0
+};
+
+OrtSessionOptions* session_options;
+api->CreateSessionOptions(&session_options);
+api->SessionOptionsAppendExecutionProvider_CUDA(session_options, &cuda_options);
+```
+
+```cpp C++ API
+Ort::SessionOptions session_options;
+OrtCUDAProviderOptions cuda_options{};
+cuda_options.device_id = 0;
+cuda_options.gpu_mem_limit = SIZE_MAX;
+
+session_options.AppendExecutionProvider_CUDA(cuda_options);
+```
+</CodeGroup>
+
+### CUDA Provider V2 (Advanced)
+
+```c
+OrtStatus* (*CreateCUDAProviderOptions)(OrtCUDAProviderOptionsV2** out);
+
+OrtStatus* (*UpdateCUDAProviderOptions)(
+    OrtCUDAProviderOptionsV2* cuda_options,
+    const char* const* provider_options_keys,
+    const char* const* provider_options_values,
+    size_t num_keys);
+
+OrtStatus* (*SessionOptionsAppendExecutionProvider_CUDA_V2)(
+    OrtSessionOptions* options,
+    const OrtCUDAProviderOptionsV2* cuda_options);
+
+void (*ReleaseCUDAProviderOptions)(OrtCUDAProviderOptionsV2* options);
+```
+
+**Example:**
+```c
+OrtCUDAProviderOptionsV2* cuda_options;
+api->CreateCUDAProviderOptions(&cuda_options);
+
+const char* keys[] = {"device_id", "gpu_mem_limit", "arena_extend_strategy"};
+const char* values[] = {"0", "2147483648", "kSameAsRequested"};
+api->UpdateCUDAProviderOptions(cuda_options, keys, values, 3);
+
+api->SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+api->ReleaseCUDAProviderOptions(cuda_options);
+```
+
+## ROCm Execution Provider
+
+### OrtROCMProviderOptions
+
+```c
+typedef struct OrtROCMProviderOptions {
+    int device_id;                        // ROCm device ID (default: 0)
+    int miopen_conv_exhaustive_search;    // MIOpen exhaustive search (default: 0)
+    size_t gpu_mem_limit;                 // GPU memory limit
+    int arena_extend_strategy;
+    int do_copy_in_default_stream;
+    int has_user_compute_stream;
+    void* user_compute_stream;
+    OrtArenaCfg* default_memory_arena_cfg;
+    int enable_hip_graph;
+    int tunable_op_enable;
+    int tunable_op_tuning_enable;
+    int tunable_op_max_tuning_duration_ms;
+} OrtROCMProviderOptions;
+```
+
+### SessionOptionsAppendExecutionProvider_ROCM
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider_ROCM)(
+    OrtSessionOptions* options,
+    const OrtROCMProviderOptions* rocm_options);
+```
+
+Append ROCm execution provider.
+
+**Example:**
+```c
+OrtROCMProviderOptions rocm_options = {
+    .device_id = 0,
+    .miopen_conv_exhaustive_search = 0,
+    .gpu_mem_limit = SIZE_MAX,
+    .arena_extend_strategy = 0,
+    .do_copy_in_default_stream = 1,
+    .enable_hip_graph = 0
+};
+
+api->SessionOptionsAppendExecutionProvider_ROCM(session_options, &rocm_options);
+```
+
+## TensorRT Execution Provider
+
+### OrtTensorRTProviderOptions
+
+```c
+typedef struct OrtTensorRTProviderOptions {
+    int device_id;                                // CUDA device ID
+    int has_user_compute_stream;
+    void* user_compute_stream;
+    int trt_max_partition_iterations;             // Max iterations for partitioning
+    int trt_min_subgraph_size;                    // Min subgraph size for TRT
+    size_t trt_max_workspace_size;                // Max workspace size
+    int trt_fp16_enable;                          // Enable FP16 precision
+    int trt_int8_enable;                          // Enable INT8 precision
+    const char* trt_int8_calibration_table_name;  // INT8 calibration table
+    int trt_int8_use_native_calibration_table;
+    int trt_dla_enable;                           // Enable DLA
+    int trt_dla_core;                             // DLA core number
+    int trt_dump_subgraphs;                       // Dump TRT subgraphs
+    int trt_engine_cache_enable;                  // Enable engine caching
+    const char* trt_engine_cache_path;            // Engine cache path
+    int trt_engine_decryption_enable;
+    const char* trt_engine_decryption_lib_path;
+    int trt_force_sequential_engine_build;
+} OrtTensorRTProviderOptions;
+```
+
+### SessionOptionsAppendExecutionProvider_TensorRT
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider_TensorRT)(
+    OrtSessionOptions* options,
+    const OrtTensorRTProviderOptions* tensorrt_options);
+```
+
+**Example:**
+```c
+OrtTensorRTProviderOptions trt_options = {
+    .device_id = 0,
+    .has_user_compute_stream = 0,
+    .trt_max_partition_iterations = 1000,
+    .trt_min_subgraph_size = 1,
+    .trt_max_workspace_size = 1 << 30,  // 1GB
+    .trt_fp16_enable = 1,
+    .trt_int8_enable = 0,
+    .trt_int8_calibration_table_name = "",
+    .trt_engine_cache_enable = 1,
+    .trt_engine_cache_path = "./trt_cache"
+};
+
+api->SessionOptionsAppendExecutionProvider_TensorRT(session_options, &trt_options);
+```
+
+### TensorRT Provider V2
+
+```c
+OrtStatus* (*CreateTensorRTProviderOptions)(OrtTensorRTProviderOptionsV2** out);
+
+OrtStatus* (*UpdateTensorRTProviderOptions)(
+    OrtTensorRTProviderOptionsV2* tensorrt_options,
+    const char* const* provider_options_keys,
+    const char* const* provider_options_values,
+    size_t num_keys);
+
+OrtStatus* (*GetTensorRTProviderOptionsAsString)(
+    const OrtTensorRTProviderOptionsV2* tensorrt_options,
+    OrtAllocator* allocator,
+    char** ptr);
+
+void (*ReleaseTensorRTProviderOptions)(OrtTensorRTProviderOptionsV2* input);
+```
+
+**Example:**
+```c
+OrtTensorRTProviderOptionsV2* trt_options;
+api->CreateTensorRTProviderOptions(&trt_options);
+
+const char* keys[] = {
+    "device_id",
+    "trt_fp16_enable",
+    "trt_max_workspace_size",
+    "trt_engine_cache_enable",
+    "trt_engine_cache_path"
+};
+const char* values[] = {"0", "1", "1073741824", "1", "./trt_cache"};
+
+api->UpdateTensorRTProviderOptions(trt_options, keys, values, 5);
+api->SessionOptionsAppendExecutionProvider_TensorRT_V2(session_options, trt_options);
+api->ReleaseTensorRTProviderOptions(trt_options);
+```
+
+## OpenVINO Execution Provider
+
+### OrtOpenVINOProviderOptions
+
+```c
+typedef struct OrtOpenVINOProviderOptions {
+    const char* device_type;              // "CPU_FP32", "GPU_FP32", etc.
+    unsigned char enable_npu_fast_compile;
+    const char* device_id;
+    size_t num_of_threads;                // 0 = use default
+    const char* cache_dir;
+    void* context;
+    unsigned char enable_opencl_throttling;
+    unsigned char enable_dynamic_shapes;
+} OrtOpenVINOProviderOptions;
+```
+
+### SessionOptionsAppendExecutionProvider_OpenVINO
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider_OpenVINO)(
+    OrtSessionOptions* options,
+    const OrtOpenVINOProviderOptions* provider_options);
+```
+
+**Example:**
+```c
+OrtOpenVINOProviderOptions openvino_options = {
+    .device_type = "CPU_FP32",
+    .enable_npu_fast_compile = 0,
+    .device_id = "",
+    .num_of_threads = 0,
+    .cache_dir = "",
+    .context = NULL,
+    .enable_opencl_throttling = 0,
+    .enable_dynamic_shapes = 0
+};
+
+api->SessionOptionsAppendExecutionProvider_OpenVINO(
+    session_options, &openvino_options);
+```
+
+## MIGraphX Execution Provider
+
+### OrtMIGraphXProviderOptions
+
+```c
+typedef struct OrtMIGraphXProviderOptions {
+    int device_id;
+    int migraphx_fp16_enable;
+    int migraphx_fp8_enable;
+    int migraphx_int8_enable;
+    int migraphx_use_native_calibration_table;
+    const char* migraphx_int8_calibration_table_name;
+    int migraphx_save_compiled_model;
+    const char* migraphx_save_model_path;
+    int migraphx_load_compiled_model;
+    const char* migraphx_load_model_path;
+    bool migraphx_exhaustive_tune;
+    size_t migraphx_mem_limit;
+    int migraphx_arena_extend_strategy;
+} OrtMIGraphXProviderOptions;
+```
+
+### SessionOptionsAppendExecutionProvider_MIGraphX
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider_MIGraphX)(
+    OrtSessionOptions* options,
+    const OrtMIGraphXProviderOptions* migraphx_options);
+```
+
+## Generic Provider Configuration
+
+### SessionOptionsAppendExecutionProvider
+
+```c
+OrtStatus* (*SessionOptionsAppendExecutionProvider)(
+    OrtSessionOptions* options,
+    const char* provider_name,
+    const char* const* provider_options_keys,
+    const char* const* provider_options_values,
+    size_t num_keys);
+```
+
+Append any execution provider using key-value configuration.
+
+**Parameters:**
+- `options`: Session options
+- `provider_name`: Name of the provider (e.g., "CUDAExecutionProvider")
+- `provider_options_keys`: Array of configuration keys
+- `provider_options_values`: Array of configuration values
+- `num_keys`: Number of key-value pairs
+
+**Example:**
+```c
+const char* keys[] = {"device_id", "gpu_mem_limit"};
+const char* values[] = {"0", "2147483648"};
+
+api->SessionOptionsAppendExecutionProvider(
+    session_options,
+    "CUDAExecutionProvider",
+    keys,
+    values,
+    2
+);
+```
+
+## Device Management
+
+### SetCurrentGpuDeviceId
+
+```c
+OrtStatus* (*SetCurrentGpuDeviceId)(int device_id);
+```
+
+Set the current GPU device ID for CUDA/TensorRT/ROCm providers.
+
+**Parameters:**
+- `device_id`: Device ID (must be less than total device count)
+
+**Example:**
+```c
+// Use GPU 1
+api->SetCurrentGpuDeviceId(1);
+```
+
+### GetCurrentGpuDeviceId
+
+```c
+OrtStatus* (*GetCurrentGpuDeviceId)(int* device_id);
+```
+
+Get the current GPU device ID.
+
+## Memory Arena Configuration
+
+### CreateArenaCfg
+
+```c
+OrtStatus* (*CreateArenaCfg)(
+    size_t max_mem,
+    int arena_extend_strategy,
+    int initial_chunk_size_bytes,
+    int max_dead_bytes_per_chunk,
+    OrtArenaCfg** out);
+```
+
+**Deprecated:** Use `CreateArenaCfgV2` instead.
+
+### CreateArenaCfgV2
+
+```c
+OrtStatus* (*CreateArenaCfgV2)(
+    const char* const* arena_config_keys,
+    const size_t* arena_config_values,
+    size_t num_keys,
+    OrtArenaCfg** out);
+```
+
+Create arena configuration for memory management.
+
+**Configuration Keys:**
+- `"max_mem"`: Maximum memory (0 = let ORT decide)
+- `"arena_extend_strategy"`: 0=kNextPowerOfTwo, 1=kSameAsRequested (-1=default)
+- `"initial_chunk_size_bytes"`: First allocation size (-1=default)
+- `"max_dead_bytes_per_chunk"`: Threshold for chunk splitting (-1=default)
+- `"initial_growth_chunk_size_bytes"`: Second allocation size (-1=default)
+- `"max_power_of_two_extend_bytes"`: Max extension size for kNextPowerOfTwo (-1=default 1GB)
+
+**Example:**
+```c
+const char* keys[] = {
+    "max_mem",
+    "arena_extend_strategy",
+    "initial_chunk_size_bytes"
+};
+size_t values[] = {
+    1024 * 1024 * 1024,  // 1GB max
+    0,                    // kNextPowerOfTwo
+    1024 * 1024           // 1MB initial
+};
+
+OrtArenaCfg* arena_cfg;
+api->CreateArenaCfgV2(keys, values, 3, &arena_cfg);
+
+// Use with CUDA options
+cuda_options.default_memory_arena_cfg = arena_cfg;
+```
+
+### ReleaseArenaCfg
+
+```c
+void (*ReleaseArenaCfg)(OrtArenaCfg* arena_cfg);
+```
+
+Free arena configuration.
+
+## Custom Operators
+
+### RegisterCustomOpsLibrary_V2
+
+```c
+OrtStatus* (*RegisterCustomOpsLibrary_V2)(
+    OrtSessionOptions* options,
+    const ORTCHAR_T* library_path);
+```
+
+Register custom operators from a shared library.
+
+**Parameters:**
+- `options`: Session options
+- `library_path`: Path to shared library (.dll, .so, .dylib)
+
+**Expected Entry Point:**
+```c
+OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
+```
+
+### EnableOrtCustomOps
+
+```c
+OrtStatus* (*EnableOrtCustomOps)(OrtSessionOptions* options);
+```
+
+Enable built-in custom operators from onnxruntime-extensions.
+
+## Provider Priority
+
+Providers are tried in the order they are added. Add the most preferred provider first:
+
+```c
+// Try TensorRT first, fall back to CUDA, then CPU
+api->SessionOptionsAppendExecutionProvider_TensorRT(options, &trt_options);
+api->SessionOptionsAppendExecutionProvider_CUDA(options, &cuda_options);
+// CPU provider is always available as fallback
+```
+
+## Complete Example
+
+<CodeGroup>
+```c C API
+OrtEnv* env;
+api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env);
+
+OrtSessionOptions* session_options;
+api->CreateSessionOptions(&session_options);
+
+// Configure CUDA provider
+OrtCUDAProviderOptions cuda_options = {
+    .device_id = 0,
+    .gpu_mem_limit = SIZE_MAX,
+    .arena_extend_strategy = 0,
+    .do_copy_in_default_stream = 1
+};
+
+OrtStatus* status = api->SessionOptionsAppendExecutionProvider_CUDA(
+    session_options, &cuda_options);
+
+if (status != NULL) {
+    printf("CUDA not available: %s\n", api->GetErrorMessage(status));
+    api->ReleaseStatus(status);
+    // Continue with CPU
+}
+
+// Create session
+OrtSession* session;
+api->CreateSession(env, model_path, session_options, &session);
+
+// Run inference...
+
+api->ReleaseSession(session);
+api->ReleaseSessionOptions(session_options);
+api->ReleaseEnv(env);
+```
+
+```cpp C++ API
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+Ort::SessionOptions session_options;
+
+try {
+    OrtCUDAProviderOptions cuda_options{};
+    cuda_options.device_id = 0;
+    cuda_options.gpu_mem_limit = SIZE_MAX;
+    
+    session_options.AppendExecutionProvider_CUDA(cuda_options);
+} catch (const Ort::Exception& e) {
+    std::cout << "CUDA not available: " << e.what() << std::endl;
+    // Continue with CPU
+}
+
+Ort::Session session(env, model_path, session_options);
+
+// Run inference...
+```
+</CodeGroup>
+
+## See Also
+
+- [Execution Providers Overview](/execution-providers/overview)
+- [CUDA Execution Provider](/execution-providers/CUDA-ExecutionProvider)
+- [TensorRT Execution Provider](/execution-providers/TensorRT-ExecutionProvider)
+- [Session Management](./session)
+- [C/C++ API Overview](./overview)

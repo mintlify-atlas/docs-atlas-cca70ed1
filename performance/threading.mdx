@@ -1,0 +1,521 @@
+---
+title: Threading and Parallelism
+description: Guide to configuring thread pools, parallelism, and concurrency in ONNX Runtime for optimal performance
+---
+
+## Overview
+
+ONNX Runtime provides flexible threading options to optimize performance on multi-core systems. This guide covers thread pool configuration, intra-op and inter-op parallelism, and best practices for concurrent execution.
+
+## Threading Architecture
+
+ONNX Runtime supports two threading implementations:
+
+1. **ORT Thread Pool**: Custom thread pool implementation (default)
+2. **OpenMP**: Industry-standard parallel programming framework (opt-in at build time)
+
+The choice is determined at build time using the `--use_openmp` flag.
+
+## Thread Pool Types
+
+### Intra-Op Thread Pool
+
+Parallelism **within** a single operator:
+
+```python
+import onnxruntime as ort
+
+session_options = ort.SessionOptions()
+
+# Set intra-op threads (parallelism within ops)
+session_options.intra_op_num_threads = 4
+
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+**Use cases:**
+- Matrix multiplications
+- Convolution operations
+- Element-wise operations on large tensors
+
+### Inter-Op Thread Pool
+
+Parallelism **between** independent operators:
+
+```python
+# Set inter-op threads (parallelism between ops)
+session_options.inter_op_num_threads = 2
+```
+
+**Use cases:**
+- Models with parallel branches
+- Independent operations in the graph
+- Pipeline parallelism
+
+## Configuration Examples
+
+### CPU-Bound Workloads
+
+```python
+import os
+import onnxruntime as ort
+
+# Get available CPU cores
+num_cores = os.cpu_count()
+
+session_options = ort.SessionOptions()
+
+# Maximize intra-op parallelism
+session_options.intra_op_num_threads = num_cores
+
+# Minimize inter-op parallelism to reduce overhead
+session_options.inter_op_num_threads = 1
+
+# Use sequential execution for lower overhead
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+### Models with Parallel Branches
+
+```python
+# Balance intra-op and inter-op parallelism
+session_options.intra_op_num_threads = 2
+session_options.inter_op_num_threads = 4
+
+# Enable parallel execution
+session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+### High-Throughput Server
+
+```python
+# Optimize for concurrent requests
+session_options.intra_op_num_threads = 1  # Limit per-request threads
+session_options.inter_op_num_threads = 1
+
+# Handle concurrency at application level
+# Create multiple sessions or use thread pool
+```
+
+## Execution Modes
+
+### Sequential Execution
+
+```python
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+```
+
+**Characteristics:**
+- Lower scheduling overhead
+- Operators execute one at a time
+- Better for simple, linear graphs
+- Default mode for most scenarios
+
+### Parallel Execution
+
+```python
+session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+**Characteristics:**
+- Higher parallelism between operators
+- Better for complex graphs with independent paths
+- Higher scheduling overhead
+- Requires inter-op thread pool
+
+## C++ API
+
+### Basic Configuration
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "threading_example");
+Ort::SessionOptions session_options;
+
+// Configure thread pools
+session_options.SetIntraOpNumThreads(4);
+session_options.SetInterOpNumThreads(2);
+
+// Set execution mode
+session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+
+Ort::Session session(env, "model.onnx", session_options);
+```
+
+### Custom Thread Pool
+
+```cpp
+// Use custom thread pool
+auto custom_thread_pool = std::make_unique<MyThreadPool>();
+session_options.SetCustomThreadPool(custom_thread_pool.get());
+```
+
+## Threading Abstractions for Op Developers
+
+ONNX Runtime provides abstractions for implementing parallel operators:
+
+### TryParallelFor
+
+```cpp
+#include "core/platform/threadpool.h"
+
+void MyOp::Compute(OpKernelContext* context) const {
+    auto thread_pool = context->GetOperatorThreadPool();
+    
+    // Parallel loop
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_iterations,
+        cost_per_iteration,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+            // Parallel work
+            for (auto i = begin; i < end; ++i) {
+                ProcessElement(i);
+            }
+        }
+    );
+}
+```
+
+### TrySimpleParallelFor
+
+Simplified version for uniform work:
+
+```cpp
+concurrency::ThreadPool::TrySimpleParallelFor(
+    thread_pool,
+    num_iterations,
+    [&](std::ptrdiff_t i) {
+        ProcessElement(i);
+    }
+);
+```
+
+### TryBatchParallelFor
+
+For batched operations:
+
+```cpp
+concurrency::ThreadPool::TryBatchParallelFor(
+    thread_pool,
+    batch_size,
+    [&](std::ptrdiff_t batch_idx) {
+        ProcessBatch(batch_idx);
+    },
+    0  // scheduling overhead
+);
+```
+
+### ShouldParallelize
+
+Check if parallelization is beneficial:
+
+```cpp
+if (concurrency::ThreadPool::ShouldParallelize(thread_pool)) {
+    // Use parallel implementation
+    ParallelCompute();
+} else {
+    // Use sequential implementation
+    SequentialCompute();
+}
+```
+
+### DegreeOfParallelism
+
+Get available parallelism:
+
+```cpp
+int num_threads = concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
+```
+
+### ParallelSection
+
+Group multiple loops in a single parallel section:
+
+```cpp
+threadpool::ParallelSection ps(thread_pool);
+
+ps.Execute(
+    [&]() {
+        // First parallel loop
+        TryParallelFor(thread_pool, n1, cost1, work1);
+    },
+    [&]() {
+        // Second parallel loop
+        TryParallelFor(thread_pool, n2, cost2, work2);
+    }
+);
+```
+
+This amortizes thread pool entry/exit costs.
+
+## OpenMP vs ORT Thread Pool
+
+### Building with OpenMP
+
+```bash
+# Build ONNX Runtime with OpenMP support
+./build.sh --config Release --use_openmp
+```
+
+### When to Use OpenMP
+
+**Advantages:**
+- Industry-standard parallelization
+- Mature optimization
+- Good for CPU-intensive ops
+
+**Considerations:**
+- May conflict with application-level OpenMP
+- Less control over thread pool
+- Build-time decision
+
+### When to Use ORT Thread Pool
+
+**Advantages:**
+- Full control over threading
+- No conflicts with application threads
+- Consistent behavior across platforms
+- Runtime configuration
+
+**Use cases:**
+- Custom threading requirements
+- Embedding in existing applications
+- Fine-grained control needed
+
+## Best Practices
+
+### 1. Match Thread Count to Hardware
+
+```python
+import os
+
+# Physical cores (better than logical cores)
+num_physical_cores = os.cpu_count() // 2  # Approximate
+
+session_options.intra_op_num_threads = num_physical_cores
+```
+
+### 2. Avoid Over-subscription
+
+```python
+# Bad: Over-subscription
+session_options.intra_op_num_threads = 32  # On 8-core CPU
+
+# Good: Match available cores
+session_options.intra_op_num_threads = 8
+```
+
+### 3. Start with Sequential Mode
+
+```python
+# Start simple
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+# Switch to parallel only if needed
+if has_parallel_branches:
+    session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+### 4. Tune for Your Workload
+
+```python
+def find_optimal_threads(model_path, input_data):
+    """Find optimal thread configuration."""
+    results = {}
+    
+    for num_threads in [1, 2, 4, 8, 16]:
+        session_options = ort.SessionOptions()
+        session_options.intra_op_num_threads = num_threads
+        session_options.inter_op_num_threads = 1
+        
+        session = ort.InferenceSession(model_path, session_options)
+        
+        # Benchmark
+        latency = benchmark(session, input_data)
+        results[num_threads] = latency
+        
+    return min(results, key=results.get)
+```
+
+### 5. Set Environment Variables
+
+Control system-level threading:
+
+```python
+import os
+
+# Limit OpenMP threads (if OpenMP is used)
+os.environ['OMP_NUM_THREADS'] = '4'
+
+# Limit MKL threads (Intel MKL)
+os.environ['MKL_NUM_THREADS'] = '4'
+
+# Disable nested parallelism
+os.environ['OMP_NESTED'] = 'FALSE'
+```
+
+### 6. Concurrent Inference
+
+For concurrent requests, limit per-session threads:
+
+```python
+import concurrent.futures
+
+# Create session with limited threads
+session_options.intra_op_num_threads = 1
+session_options.inter_op_num_threads = 1
+session = ort.InferenceSession("model.onnx", session_options)
+
+# Handle concurrency at application level
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    futures = [executor.submit(session.run, None, {"input": data}) 
+               for data in batch]
+    results = [f.result() for f in futures]
+```
+
+## Platform-Specific Considerations
+
+### Linux
+
+```python
+# Use taskset to pin to specific cores
+import subprocess
+subprocess.run(["taskset", "-c", "0-3", "python", "inference.py"])
+```
+
+### Windows
+
+```python
+# Set processor affinity
+import os
+import psutil
+
+process = psutil.Process(os.getpid())
+process.cpu_affinity([0, 1, 2, 3])  # Pin to first 4 cores
+```
+
+### macOS
+
+```python
+# No direct affinity control, use thread count
+session_options.intra_op_num_threads = os.cpu_count()
+```
+
+## Troubleshooting
+
+### Poor CPU Utilization
+
+**Symptoms:** Low CPU usage during inference
+
+**Solutions:**
+1. Increase intra-op threads
+2. Enable parallel execution mode
+3. Check for I/O bottlenecks
+
+```python
+session_options.intra_op_num_threads = os.cpu_count()
+session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+### Thread Contention
+
+**Symptoms:** Performance degrades with more threads
+
+**Solutions:**
+1. Reduce thread count
+2. Use sequential execution
+3. Profile for lock contention
+
+```python
+session_options.intra_op_num_threads = 4  # Reduce from higher value
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+```
+
+### Inconsistent Performance
+
+**Symptoms:** High latency variance
+
+**Solutions:**
+1. Fix thread count (don't use default)
+2. Disable dynamic threading
+3. Pin to physical cores
+
+```python
+os.environ['OMP_DYNAMIC'] = 'FALSE'
+session_options.intra_op_num_threads = 4  # Fixed value
+```
+
+## Important Guidelines for Developers
+
+<Warning>
+**Do not use `#ifdef _OPENMP` or `#pragma omp` directly in operator code.**
+
+Always use the threading abstractions provided in:
+- `threadpool.h` - ThreadPool class
+- `thread_utils.h` - Threading utility functions
+
+These abstractions handle both OpenMP and non-OpenMP builds automatically.
+</Warning>
+
+### Example: Correct Approach
+
+```cpp
+// Good: Use abstractions
+#include "core/platform/threadpool.h"
+
+TryParallelFor(thread_pool, n, cost, [&](ptrdiff_t i) {
+    Process(i);
+});
+```
+
+### Example: Incorrect Approach
+
+```cpp
+// Bad: Direct OpenMP usage
+#ifdef _OPENMP
+#pragma omp parallel for
+for (int i = 0; i < n; ++i) {
+    Process(i);
+}
+#endif
+```
+
+## Performance Tuning Examples
+
+### Example 1: Latency-Optimized
+
+```python
+# Minimize latency for single request
+session_options.intra_op_num_threads = os.cpu_count()
+session_options.inter_op_num_threads = 1
+session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+```
+
+### Example 2: Throughput-Optimized
+
+```python
+# Maximize throughput for batch processing
+session_options.intra_op_num_threads = 4
+session_options.inter_op_num_threads = 2
+session_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+```
+
+### Example 3: Server Deployment
+
+```python
+# Balance multiple concurrent requests
+session_options.intra_op_num_threads = 2
+session_options.inter_op_num_threads = 1
+
+# Use application-level concurrency control
+```
+
+## See Also
+
+- [Performance Tuning](/performance/tuning)
+- [Memory Optimization](/performance/memory-optimization)
+- [Benchmarking Models](/performance/benchmarking)

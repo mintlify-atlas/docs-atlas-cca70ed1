@@ -1,0 +1,253 @@
+---
+title: SessionOptions
+description: Configuration options for InferenceSession
+---
+
+## SessionOptions
+
+The `SessionOptions` class allows you to configure various aspects of an InferenceSession, including graph optimization, thread pool sizes, execution providers, and profiling.
+
+### Constructor
+
+```python
+SessionOptions()
+```
+
+Creates a new SessionOptions object with default settings.
+
+### Properties
+
+<ParamField path="graph_optimization_level" type="GraphOptimizationLevel">
+  Controls the level of graph optimizations applied.
+  
+  - `ORT_DISABLE_ALL` - No optimizations
+  - `ORT_ENABLE_BASIC` - Basic optimizations (default)
+  - `ORT_ENABLE_EXTENDED` - Extended optimizations
+  - `ORT_ENABLE_ALL` - All optimizations including layout transformations
+</ParamField>
+
+<ParamField path="intra_op_num_threads" type="int">
+  Number of threads used to parallelize execution within nodes. Default is 0 (use default number).
+</ParamField>
+
+<ParamField path="inter_op_num_threads" type="int">
+  Number of threads used to parallelize execution of nodes. Default is 0 (use default number).
+</ParamField>
+
+<ParamField path="execution_mode" type="ExecutionMode">
+  Controls whether operators are executed sequentially or in parallel.
+  
+  - `ORT_SEQUENTIAL` - Execute operators sequentially
+  - `ORT_PARALLEL` - Execute operators in parallel when possible
+</ParamField>
+
+<ParamField path="execution_order" type="ExecutionOrder">
+  Controls the order in which graph nodes are executed.
+  
+  - `DEFAULT` - Use default topological order
+  - `PRIORITY_BASED` - Use priority-based scheduling
+</ParamField>
+
+<ParamField path="enable_profiling" type="bool">
+  Enable profiling to collect performance data. Default is False.
+</ParamField>
+
+<ParamField path="optimized_model_filepath" type="str">
+  Path to save the optimized model. If set, the optimized graph will be saved to this location.
+</ParamField>
+
+<ParamField path="log_severity_level" type="int">
+  Logging verbosity level (0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Fatal). Default is 2.
+</ParamField>
+
+<ParamField path="log_verbosity_level" type="int">
+  VLOG level for verbose logging. Default is 0.
+</ParamField>
+
+<ParamField path="enable_mem_pattern" type="bool">
+  Enable memory pattern optimization. Default is True.
+</ParamField>
+
+<ParamField path="enable_mem_reuse" type="bool">
+  Enable memory reuse optimization. Default is True.
+</ParamField>
+
+<ParamField path="enable_cpu_mem_arena" type="bool">
+  Enable CPU memory arena allocator. Default is True.
+</ParamField>
+
+### Methods
+
+#### add_session_config_entry()
+
+Add custom session configuration entry.
+
+```python
+add_session_config_entry(
+    key: str,
+    value: str
+)
+```
+
+<ParamField path="key" type="str" required>
+  Configuration key.
+</ParamField>
+
+<ParamField path="value" type="str" required>
+  Configuration value.
+</ParamField>
+
+**Common Configuration Keys:**
+
+- `session.load_model_format` - Set to "ONNX" or "ORT"
+- `session.use_env_allocators` - Use environment allocators
+- `session.record_ep_graph_assignment_info` - Record EP graph assignment ("1" to enable)
+- `session.disable_prepacking` - Disable weight prepacking
+
+#### register_custom_ops_library()
+
+Register a shared library containing custom operators.
+
+```python
+register_custom_ops_library(library_path: str)
+```
+
+<ParamField path="library_path" type="str" required>
+  Path to the shared library (.so, .dll, or .dylib).
+</ParamField>
+
+#### add_external_initializers()
+
+Add external initializers to the session.
+
+```python
+add_external_initializers(
+    names: list[str],
+    values: list[OrtValue]
+)
+```
+
+<ParamField path="names" type="list[str]" required>
+  Names of the initializers.
+</ParamField>
+
+<ParamField path="values" type="list[OrtValue]" required>
+  OrtValue objects containing initializer data.
+</ParamField>
+
+#### add_free_dimension_override_by_name()
+
+Override a free dimension with a specific value.
+
+```python
+add_free_dimension_override_by_name(
+    dim_name: str,
+    dim_value: int
+)
+```
+
+<ParamField path="dim_name" type="str" required>
+  Name of the dimension to override.
+</ParamField>
+
+<ParamField path="dim_value" type="int" required>
+  Value to use for the dimension.
+</ParamField>
+
+### Example Usage
+
+#### Basic Configuration
+
+```python
+import onnxruntime as ort
+
+sess_options = ort.SessionOptions()
+
+# Enable all optimizations
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+# Set thread counts
+sess_options.intra_op_num_threads = 4
+sess_options.inter_op_num_threads = 2
+
+# Enable parallel execution
+sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+
+# Create session with options
+sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
+```
+
+#### Enable Profiling
+
+```python
+sess_options = ort.SessionOptions()
+sess_options.enable_profiling = True
+
+sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
+
+# Run inference
+outputs = sess.run(None, inputs)
+
+# Get profiling results
+profile_file = sess.end_profiling()
+print(f"Profiling data saved to: {profile_file}")
+```
+
+#### Save Optimized Model
+
+```python
+sess_options = ort.SessionOptions()
+sess_options.optimized_model_filepath = "model_optimized.onnx"
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+
+sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
+# Optimized model is automatically saved
+```
+
+#### Custom Configuration
+
+```python
+sess_options = ort.SessionOptions()
+
+# Load ORT format model
+sess_options.add_session_config_entry("session.load_model_format", "ORT")
+
+# Record EP graph assignment for debugging
+sess_options.add_session_config_entry("session.record_ep_graph_assignment_info", "1")
+
+sess = ort.InferenceSession("model.ort", sess_options=sess_options)
+
+# Get graph assignment info
+assignment = sess.get_provider_graph_assignment_info()
+```
+
+#### Register Custom Operators
+
+```python
+sess_options = ort.SessionOptions()
+sess_options.register_custom_ops_library("custom_ops.so")
+
+sess = ort.InferenceSession("model_with_custom_ops.onnx", sess_options=sess_options)
+```
+
+### Performance Tuning
+
+```python
+# For CPU inference
+sess_options = ort.SessionOptions()
+sess_options.intra_op_num_threads = 8  # Use 8 threads per op
+sess_options.inter_op_num_threads = 1   # Sequential op execution
+sess_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+# For GPU inference
+sess_options = ort.SessionOptions()
+sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+```
+
+### Related APIs
+
+- [InferenceSession](/api/python/inference-session) - Create sessions with options
+- [RunOptions](/api/python/run-options) - Per-run configuration
+- [Execution Providers](/api/python/providers) - Hardware acceleration

@@ -1,0 +1,463 @@
+---
+title: Server Deployment
+description: Deploy ONNX Runtime models with ONNX Runtime Server for production inference
+---
+
+<Note>
+**Deprecation Notice**: ONNX Runtime Server has been deprecated and is no longer actively maintained. For production deployments, consider alternatives like:
+
+- [Triton Inference Server](https://github.com/triton-inference-server/server) with ONNX Runtime backend
+- Custom REST APIs using ONNX Runtime SDKs
+- Cloud-native solutions (Azure ML, AWS SageMaker, etc.)
+</Note>
+
+## Overview
+
+ONNX Runtime Server provided an easy way to start an inferencing server with both HTTP and GRPC endpoints. While deprecated, this documentation is maintained for reference.
+
+## Building ONNX Runtime Server
+
+### Prerequisites
+
+1. [golang](https://golang.org/doc/install)
+2. [grpc](https://github.com/grpc/grpc/blob/master/BUILDING.md)
+3. [re2](https://github.com/google/re2)
+4. cmake
+5. gcc and g++
+6. ONNX Runtime C API binaries from [GitHub releases](https://github.com/microsoft/onnxruntime/releases)
+
+### Build Instructions (Linux)
+
+```bash
+cd server
+mkdir build
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+make
+```
+
+#### With rsyslog Support
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Debug -Donnxruntime_USE_SYSLOG=1 ..
+make
+```
+
+### Using Build Script
+
+```bash
+python3 /onnxruntime/tools/ci_build/build.py \
+  --build_dir /onnxruntime/build \
+  --config Release \
+  --build_server \
+  --parallel \
+  --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER)
+```
+
+## Starting the Server
+
+### Basic Usage
+
+```bash
+./onnxruntime_server --model_path /path/to/model.onnx
+```
+
+### Command Line Options
+
+```bash
+./onnxruntime_server --help
+
+Allowed options:
+  -h [ --help ]                Shows a help message and exits
+  --log_level arg (=info)      Logging level: verbose, info, warning, error, fatal
+  --model_path arg             Path to ONNX model (required)
+  --address arg (=0.0.0.0)     The base HTTP address
+  --http_port arg (=8001)      HTTP port to listen to requests
+  --num_http_threads arg       Number of http threads (default: # of CPU cores)
+  --grpc_port arg (=50051)     GRPC port to listen to requests
+```
+
+### Example
+
+```bash
+./onnxruntime_server \
+  --model_path ./resnet50.onnx \
+  --http_port 8001 \
+  --grpc_port 50051 \
+  --log_level info \
+  --num_http_threads 4
+```
+
+## HTTP Endpoint
+
+### Prediction URL Format
+
+```
+http://<host>:<port>/v1/models/<model-name>/versions/<version>:predict
+```
+
+Example:
+
+```
+http://127.0.0.1:8001/v1/models/mymodel/versions/3:predict
+```
+
+**Note**: Model name and version can be any string (length > 0).
+
+### Request and Response Format
+
+Requests and responses use Protocol Buffers format. The protobuf definition is available in `server/protobuf/predict.proto`.
+
+### Content Types
+
+#### Request Headers
+
+The `Content-Type` header is **required**:
+
+- `application/json` - JSON format (UTF-8)
+- `application/vnd.google.protobuf` - Binary protobuf
+- `application/x-protobuf` - Binary protobuf
+- `application/octet-stream` - Binary protobuf
+
+#### Response Format
+
+Set the `Accept` header to control response format:
+
+- Same options as `Content-Type`
+- Defaults to request content type if not specified
+
+### Making HTTP Requests
+
+#### Using cURL (JSON)
+
+```bash
+curl -X POST \
+  -d @predict_request.json \
+  -H "Content-Type: application/json" \
+  http://127.0.0.1:8001/v1/models/mymodel/versions/1:predict
+```
+
+#### Using cURL (Binary)
+
+```bash
+curl -X POST \
+  --data-binary @predict_request.pb \
+  -H "Content-Type: application/octet-stream" \
+  http://127.0.0.1:8001/v1/models/mymodel/versions/1:predict
+```
+
+#### Using Python
+
+```python
+import requests
+import json
+import numpy as np
+
+# Prepare input data
+input_data = {
+    "inputs": [
+        {
+            "name": "input",
+            "datatype": "FP32",
+            "shape": [1, 3, 224, 224],
+            "data": input_array.flatten().tolist()
+        }
+    ]
+}
+
+# Make request
+response = requests.post(
+    "http://localhost:8001/v1/models/resnet/versions/1:predict",
+    headers={"Content-Type": "application/json"},
+    data=json.dumps(input_data)
+)
+
+# Parse response
+result = response.json()
+print("Predictions:", result["outputs"])
+```
+
+## GRPC Endpoint
+
+### Protobuf Definition
+
+The GRPC service definition is available in `server/protobuf/prediction_service.proto`.
+
+### Python GRPC Client
+
+```python
+import grpc
+import predict_pb2
+import predict_pb2_grpc
+import numpy as np
+
+# Create channel
+channel = grpc.insecure_channel('localhost:50051')
+stub = predict_pb2_grpc.PredictionServiceStub(channel)
+
+# Prepare request
+request = predict_pb2.PredictRequest()
+request.model_spec.name = 'mymodel'
+request.model_spec.version.value = 1
+
+# Add input
+input_tensor = predict_pb2.TensorProto()
+input_tensor.dtype = predict_pb2.DT_FLOAT
+input_tensor.float_data.extend(input_array.flatten())
+input_tensor.tensor_shape.dim.add().size = 1
+input_tensor.tensor_shape.dim.add().size = 3
+input_tensor.tensor_shape.dim.add().size = 224
+input_tensor.tensor_shape.dim.add().size = 224
+request.inputs['input'].CopyFrom(input_tensor)
+
+# Make request
+response = stub.Predict(request, timeout=10.0)
+print("Response:", response)
+```
+
+## Advanced Configuration
+
+### Number of Worker Threads
+
+Control server utilization with worker threads:
+
+```bash
+./onnxruntime_server \
+  --model_path model.onnx \
+  --num_http_threads 8  # Adjust based on CPU cores
+```
+
+### Request Tracking Headers
+
+The server provides headers for request tracking:
+
+- `x-ms-request-id`: Server-generated GUID for each request (e.g., `72b68108-18a4-493c-ac75-d0abd82f0a11`)
+- `x-ms-client-request-id`: Client-provided ID that persists in response
+
+#### Example
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "x-ms-client-request-id: my-request-123" \
+  -d @request.json \
+  http://localhost:8001/v1/models/model/versions/1:predict
+```
+
+### rsyslog Integration
+
+If built with rsyslog support:
+
+```bash
+# View logs
+tail -f /var/log/syslog | grep onnxruntime
+```
+
+Configure rsyslog in `/etc/rsyslog.conf` or `/etc/rsyslog.d/`.
+
+## Production Deployment
+
+### Docker Deployment
+
+```dockerfile
+FROM ubuntu:20.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    libprotobuf-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy server binary and model
+COPY onnxruntime_server /app/
+COPY model.onnx /app/models/
+
+WORKDIR /app
+
+EXPOSE 8001 50051
+
+CMD ["./onnxruntime_server", \
+     "--model_path", "/app/models/model.onnx", \
+     "--http_port", "8001", \
+     "--grpc_port", "50051"]
+```
+
+Build and run:
+
+```bash
+docker build -t ort-server .
+docker run -p 8001:8001 -p 50051:50051 ort-server
+```
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ort-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ort-server
+  template:
+    metadata:
+      labels:
+        app: ort-server
+    spec:
+      containers:
+      - name: ort-server
+        image: ort-server:latest
+        ports:
+        - containerPort: 8001
+          name: http
+        - containerPort: 50051
+          name: grpc
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /v1/models/model/versions/1:predict
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ort-server
+spec:
+  selector:
+    app: ort-server
+  ports:
+  - name: http
+    port: 8001
+    targetPort: 8001
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+  type: LoadBalancer
+```
+
+### Load Balancing
+
+Use nginx for load balancing:
+
+```nginx
+upstream ort_backend {
+    server localhost:8001;
+    server localhost:8002;
+    server localhost:8003;
+}
+
+server {
+    listen 80;
+    
+    location /v1/ {
+        proxy_pass http://ort_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Performance Tuning
+
+### Thread Configuration
+
+```bash
+# Set based on available CPU cores
+NUM_CORES=$(nproc)
+OPTIMAL_THREADS=$((NUM_CORES - 1))
+
+./onnxruntime_server \
+  --model_path model.onnx \
+  --num_http_threads $OPTIMAL_THREADS
+```
+
+### Model Optimization
+
+1. Convert to ORT format for faster loading
+2. Use graph optimization level 'all'
+3. Consider quantization for INT8 inference
+
+## Monitoring and Debugging
+
+### Health Check Endpoint
+
+Implement custom health checks:
+
+```bash
+# Simple health check script
+curl -f http://localhost:8001/v1/models/model/versions/1:predict \
+  -H "Content-Type: application/json" \
+  -d '{"inputs": []}' || exit 1
+```
+
+### Logging Levels
+
+```bash
+# Verbose logging for debugging
+./onnxruntime_server \
+  --model_path model.onnx \
+  --log_level verbose
+
+# Production logging
+./onnxruntime_server \
+  --model_path model.onnx \
+  --log_level warning
+```
+
+## Migration Guide
+
+### Moving to Triton Inference Server
+
+Triton supports ONNX Runtime as a backend:
+
+1. **Install Triton**: Use official Docker images
+2. **Configure model repository**:
+   ```
+   models/
+   └── mymodel/
+       ├── config.pbtxt
+       └── 1/
+           └── model.onnx
+   ```
+3. **config.pbtxt**:
+   ```protobuf
+   name: "mymodel"
+   platform: "onnxruntime_onnx"
+   max_batch_size: 8
+   input [
+     {
+       name: "input"
+       data_type: TYPE_FP32
+       dims: [ 3, 224, 224 ]
+     }
+   ]
+   output [
+     {
+       name: "output"
+       data_type: TYPE_FP32
+       dims: [ 1000 ]
+     }
+   ]
+   ```
+4. **Start Triton**:
+   ```bash
+   docker run --rm -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+     -v /path/to/models:/models \
+     nvcr.io/nvidia/tritonserver:latest \
+     tritonserver --model-repository=/models
+   ```
+
+## Resources
+
+- [Triton Inference Server](https://github.com/triton-inference-server/server)
+- [ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime)
+- [Production Deployment Best Practices](/deployment/production)

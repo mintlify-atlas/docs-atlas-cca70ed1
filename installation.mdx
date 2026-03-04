@@ -1,0 +1,532 @@
+---
+title: Installation
+description: Install ONNX Runtime on various platforms and programming languages including Python, C/C++, C#, Java, and JavaScript
+---
+
+ONNX Runtime supports multiple platforms and programming languages. Choose your preferred language and platform below.
+
+## Python
+
+ONNX Runtime for Python is available on PyPI for Windows, Linux, and macOS.
+
+<Tabs>
+  <Tab title="CPU">
+    Install the CPU-only version:
+
+    ```bash
+    pip install onnxruntime
+    ```
+
+    For nightly builds:
+
+    ```bash
+    pip install onnxruntime --pre
+    ```
+  </Tab>
+  
+  <Tab title="GPU (CUDA)">
+    Install the GPU version with CUDA support:
+
+    ```bash
+    pip install onnxruntime-gpu
+    ```
+
+    <Note>
+      CUDA 12.x is required. The package automatically installs CUDA dependencies when you install with the `[cuda]` extra:
+      
+      ```bash
+      pip install onnxruntime-gpu[cuda]
+      ```
+    </Note>
+
+    For cuDNN support:
+
+    ```bash
+    pip install onnxruntime-gpu[cuda,cudnn]
+    ```
+  </Tab>
+
+  <Tab title="Other Execution Providers">
+    Additional execution provider packages:
+
+    ```bash
+    # OpenVINO
+    pip install onnxruntime-openvino
+
+    # DirectML (Windows)
+    pip install onnxruntime-directml
+
+    # TensorRT
+    pip install onnxruntime-gpu  # TensorRT EP included
+
+    # ROCm (AMD GPU)
+    pip install onnxruntime-rocm
+    ```
+  </Tab>
+</Tabs>
+
+### Requirements
+
+- Python 3.11 or later (3.11, 3.12, 3.13, 3.14 supported)
+- Compatible with Windows, Linux, and macOS
+
+### Optional Dependencies
+
+```bash
+# For symbolic shape inference
+pip install onnxruntime[symbolic]
+
+# For quantization utilities
+pip install onnxruntime[quantization]
+```
+
+## C/C++
+
+ONNX Runtime provides pre-built C/C++ libraries for multiple platforms.
+
+<Steps>
+  <Step title="Download the Release Package">
+    Download the appropriate package from [GitHub Releases](https://github.com/microsoft/onnxruntime/releases):
+
+    - **Windows**: `onnxruntime-win-x64-[version].zip`
+    - **Linux**: `onnxruntime-linux-x64-[version].tgz`
+    - **macOS**: `onnxruntime-osx-[arch]-[version].tgz`
+    - **Mobile**: `onnxruntime-android-[version].aar`, `onnxruntime-ios-[version].xcframework`
+
+    Extract the archive to get the `include/` and `lib/` directories.
+  </Step>
+
+  <Step title="Set Up Your Build System">
+    <Tabs>
+      <Tab title="CMake">
+        Configure your `CMakeLists.txt`:
+
+        ```cmake
+        cmake_minimum_required(VERSION 3.28)
+        project(MyProject)
+
+        # Set paths to ONNX Runtime
+        set(ORT_HEADER_DIR "path/to/onnxruntime/include")
+        set(ORT_LIBRARY_DIR "path/to/onnxruntime/lib")
+
+        # Link against ONNX Runtime
+        include_directories(${ORT_HEADER_DIR})
+        link_directories(${ORT_LIBRARY_DIR})
+
+        add_executable(myapp main.cpp)
+        target_link_libraries(myapp onnxruntime)
+        ```
+
+        Build your project:
+
+        ```bash
+        cmake -S . -B build -DORT_HEADER_DIR=/path/to/include -DORT_LIBRARY_DIR=/path/to/lib
+        cmake --build build --config Release
+        ```
+      </Tab>
+
+      <Tab title="Manual Compilation">
+        Compile and link manually:
+
+        ```bash
+        # Linux/macOS
+        g++ -std=c++17 main.cpp -I/path/to/onnxruntime/include \
+            -L/path/to/onnxruntime/lib -lonnxruntime -o myapp
+
+        # Windows (MSVC)
+        cl.exe main.cpp /I"path\\to\\onnxruntime\\include" \
+               /link /LIBPATH:"path\\to\\onnxruntime\\lib" onnxruntime.lib
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Include the Header">
+    In your C++ code:
+
+    ```cpp
+    #include "onnxruntime_cxx_api.h"
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Make sure the ONNX Runtime shared library (`.so`, `.dll`, or `.dylib`) is in your system's library path at runtime.
+</Note>
+
+### Build from Source
+
+For advanced users who need custom builds:
+
+```bash
+# Clone the repository
+git clone --recursive https://github.com/microsoft/onnxruntime.git
+cd onnxruntime
+
+# Build (Linux/macOS)
+./build.sh --config Release --build_shared_lib --parallel
+
+# Build (Windows)
+.\\build.bat --config Release --build_shared_lib --parallel
+```
+
+See the [build documentation](https://onnxruntime.ai/docs/build/) for detailed instructions.
+
+## C#
+
+ONNX Runtime is available as NuGet packages for .NET applications.
+
+<Tabs>
+  <Tab title="CPU">
+    Install the managed and native packages:
+
+    ```bash
+    # Managed API
+    dotnet add package Microsoft.ML.OnnxRuntime
+    
+    # Or via NuGet Package Manager
+    Install-Package Microsoft.ML.OnnxRuntime
+    ```
+
+    The native libraries are automatically included.
+  </Tab>
+
+  <Tab title="GPU (CUDA)">
+    For GPU support:
+
+    ```bash
+    dotnet add package Microsoft.ML.OnnxRuntime.Gpu
+    ```
+  </Tab>
+
+  <Tab title="DirectML (Windows)">
+    For DirectML execution provider:
+
+    ```bash
+    dotnet add package Microsoft.ML.OnnxRuntime.DirectML
+    ```
+  </Tab>
+
+  <Tab title="Mobile">
+    For Xamarin and MAUI applications:
+
+    ```bash
+    # iOS
+    dotnet add package Microsoft.ML.OnnxRuntime
+    
+    # Android
+    dotnet add package Microsoft.ML.OnnxRuntime
+    ```
+
+    The package includes targets for iOS, Android, and other mobile platforms.
+  </Tab>
+</Tabs>
+
+### Requirements
+
+- .NET 6.0 or later
+- Compatible with .NET Framework 4.6.2+, .NET Core 3.1+, .NET 5+
+- Supports Windows, Linux, macOS, iOS, and Android
+
+### Local Build
+
+To build the NuGet managed package locally:
+
+<Tabs>
+  <Tab title="Windows">
+    ```bash
+    # Restore dependencies
+    msbuild -t:restore .\\src\\Microsoft.ML.OnnxRuntime\\Microsoft.ML.OnnxRuntime.csproj
+    
+    # Build
+    msbuild -t:build .\\src\\Microsoft.ML.OnnxRuntime\\Microsoft.ML.OnnxRuntime.csproj
+    
+    # Create package
+    msbuild .\\OnnxRuntime.CSharp.proj -t:CreatePackage -p:Configuration=Release
+    ```
+  </Tab>
+
+  <Tab title="Linux">
+    ```bash
+    ./build.sh --config Release --build_nuget
+    ```
+
+    The `.nupkg` file will be in `build/Release`.
+  </Tab>
+</Tabs>
+
+## Java
+
+ONNX Runtime for Java is available on Maven Central.
+
+### Maven
+
+Add to your `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>com.microsoft.onnxruntime</groupId>
+    <artifactId>onnxruntime</artifactId>
+    <version>1.25.0</version>
+</dependency>
+```
+
+For GPU support:
+
+```xml
+<dependency>
+    <groupId>com.microsoft.onnxruntime</groupId>
+    <artifactId>onnxruntime_gpu</artifactId>
+    <version>1.25.0</version>
+</dependency>
+```
+
+### Gradle
+
+Add to your `build.gradle`:
+
+```groovy
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.25.0'
+}
+```
+
+### Requirements
+
+- Java 8 or later (Java 11+ required for building)
+- Compatible with Windows, Linux, and macOS
+
+### Build from Source
+
+To build the Java binding:
+
+```bash
+# From the repository root
+./build.sh --build_java --config Release
+
+# The JAR will be in build/[OS]/Release/java/build/libs/
+```
+
+See the [Java API build instructions](https://onnxruntime.ai/docs/build/) for more details.
+
+## JavaScript
+
+ONNX Runtime provides packages for Node.js and web browsers.
+
+<Tabs>
+  <Tab title="Node.js">
+    Install for Node.js applications:
+
+    ```bash
+    npm install onnxruntime-node
+    ```
+
+    For development/nightly builds:
+
+    ```bash
+    npm install onnxruntime-node@dev
+    ```
+
+    <Note>
+      The package includes pre-built binaries for:
+      - Windows (x64, arm64)
+      - Linux (x64, arm64)
+      - macOS (x64, arm64)
+      
+      CUDA binaries are automatically downloaded for Linux x64.
+    </Note>
+
+    ### Skip CUDA Installation
+
+    To skip automatic CUDA EP installation:
+
+    ```bash
+    npm install onnxruntime-node --onnxruntime-node-install=skip
+    ```
+  </Tab>
+
+  <Tab title="Web (Browser)">
+    Install for browser applications:
+
+    ```bash
+    npm install onnxruntime-web
+    ```
+
+    For WebGPU support:
+
+    ```bash
+    npm install onnxruntime-web
+    # WebGPU is included in the default package
+    ```
+
+    ### Bundle Options
+
+    ONNX Runtime Web provides multiple bundle files for different use cases:
+
+    | Bundle | Size | WebGL | WASM | WebGPU |
+    |--------|------|-------|------|--------|
+    | `ort.all.min.js` | 682 KB | ✓ | ✓ | ✓ |
+    | `ort.min.js` | 434 KB | ✓ | ✓ | ✗ |
+    | `ort.webgl.min.js` | 411 KB | ✓ | ✗ | ✗ |
+    | `ort.webgpu.min.js` | 293 KB | ✗ | ✓ | ✓ |
+    | `ort.wasm.min.js` | 46 KB | ✗ | ✓ | ✗ |
+
+    ### CDN Usage
+
+    You can also use ONNX Runtime Web from a CDN:
+
+    ```html
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    ```
+  </Tab>
+
+  <Tab title="React Native">
+    Install for React Native applications:
+
+    ```bash
+    npm install onnxruntime-react-native
+    ```
+
+    <Warning>
+      React Native requires additional setup for iOS and Android. See the [React Native documentation](https://onnxruntime.ai/docs/reference/api/react-native-api.html) for platform-specific configuration.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Requirements
+
+- **Node.js**: v20.x or later (v16+ supported)
+- **Electron**: v28.x or later (v15+ supported)
+- **Browsers**: Modern browsers with WebAssembly support
+
+## Platform-Specific Notes
+
+<Tabs>
+  <Tab title="Windows">
+    ### System Requirements
+    - Windows 10 version 1809 or later
+    - Visual Studio 2019 or later (for building from source)
+    - Windows SDK 10.0.17763.0 or later
+
+    ### GPU Support
+    - **CUDA**: NVIDIA GPU with CUDA 12.x
+    - **DirectML**: Windows 10 version 1903 or later, DirectX 12 capable GPU
+
+    ### Common Issues
+    - Install [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) if you encounter missing DLL errors
+  </Tab>
+
+  <Tab title="Linux">
+    ### System Requirements
+    - Ubuntu 20.04+ or equivalent
+    - glibc 2.28 or later
+    - GCC 9+ or Clang 10+ (for building from source)
+
+    ### GPU Support
+    - **CUDA**: NVIDIA GPU with CUDA 12.x and cuDNN 9.x
+    - **ROCm**: AMD GPU with ROCm 5.4+
+
+    ### Install Dependencies
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get update
+    sudo apt-get install -y libgomp1
+    ```
+  </Tab>
+
+  <Tab title="macOS">
+    ### System Requirements
+    - macOS 10.15 (Catalina) or later
+    - Xcode 12.0+ (for building from source)
+
+    ### Apple Silicon
+    Native ARM64 builds are available for Apple Silicon (M1/M2/M3) Macs.
+
+    ### CoreML Support
+    CoreML execution provider is available on both Intel and Apple Silicon Macs:
+
+    ```python
+    # Python
+    import onnxruntime as ort
+    session = ort.InferenceSession("model.onnx", 
+                                   providers=["CoreMLExecutionProvider"])
+    ```
+  </Tab>
+
+  <Tab title="Mobile">
+    ### Android
+    - Android API Level 24 (Android 7.0) or higher
+    - NDK r23c or later
+    - Gradle 7.0+
+
+    Available via:
+    - Maven: `com.microsoft.onnxruntime:onnxruntime-android`
+    - AAR files from GitHub releases
+
+    ### iOS
+    - iOS 12.0 or later
+    - Xcode 14.0+
+    - CocoaPods 1.12+
+
+    Available via:
+    - CocoaPods: `pod 'onnxruntime-c'`
+    - XCFramework from GitHub releases
+
+    <Note>
+      Mobile builds support both ONNX format and optimized ORT format models. See [ORT format documentation](https://onnxruntime.ai/docs/reference/ort-format-models.html) for details.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+After installation, verify ONNX Runtime is working:
+
+<CodeGroup>
+```python Python
+import onnxruntime as ort
+print(f"ONNX Runtime version: {ort.__version__}")
+print(f"Available providers: {ort.get_available_providers()}")
+```
+
+```cpp C++
+#include <iostream>
+#include "onnxruntime_cxx_api.h"
+
+int main() {
+    std::cout << "ONNX Runtime version: " 
+              << Ort::GetVersionString() << std::endl;
+    return 0;
+}
+```
+
+```csharp C#
+using Microsoft.ML.OnnxRuntime;
+
+class Program {
+    static void Main() {
+        Console.WriteLine($"ONNX Runtime version: {OrtEnv.Version}");
+    }
+}
+```
+
+```java Java
+import ai.onnxruntime.OrtEnvironment;
+
+public class Main {
+    public static void main(String[] args) {
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        System.out.println("Version: " + env.getVersion());
+    }
+}
+```
+
+```javascript JavaScript (Node.js)
+const ort = require('onnxruntime-node');
+console.log('ONNX Runtime version:', ort.version);
+```
+</CodeGroup>
+
+## Next Steps
+
+Now that you have ONNX Runtime installed, check out the [Quickstart Guide](/quickstart) to learn how to run inference with your first model.

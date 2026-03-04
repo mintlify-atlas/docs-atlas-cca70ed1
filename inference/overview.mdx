@@ -1,0 +1,122 @@
+---
+title: Inference Overview
+description: Learn how to run inference with ONNX Runtime across different programming languages and platforms
+---
+
+# Inference Overview
+
+ONNX Runtime provides high-performance inference for ONNX models across multiple platforms and programming languages. This section covers everything you need to know about running inference with ONNX Runtime.
+
+## What is ONNX Runtime Inference?
+
+ONNX Runtime inference is the process of using a trained ONNX model to make predictions on new data. ONNX Runtime optimizes models for production deployment and provides:
+
+- **High Performance**: Optimized kernels and execution providers for CPU, GPU, and specialized hardware
+- **Cross-Platform**: Run models on Windows, Linux, macOS, iOS, Android, and web browsers
+- **Multiple APIs**: Native APIs for Python, C/C++, C#, Java, and JavaScript
+- **Hardware Acceleration**: Support for CUDA, TensorRT, DirectML, CoreML, and more
+
+## Key Concepts
+
+### InferenceSession
+
+The `InferenceSession` (or `OrtSession` in Java) is the main class for running inference. It:
+
+- Loads and validates your ONNX model
+- Manages model execution and optimization
+- Provides access to model metadata (inputs, outputs, custom metadata)
+- Handles multiple execution providers
+
+### Execution Providers
+
+Execution providers enable hardware acceleration:
+
+- **CPU**: Default provider, optimized for x86/ARM processors
+- **CUDA**: NVIDIA GPU acceleration
+- **TensorRT**: NVIDIA TensorRT optimization
+- **DirectML**: Windows GPU acceleration
+- **CoreML**: Apple device acceleration
+- **OpenVINO**: Intel hardware optimization
+- **WebGPU/WebNN**: Browser-based acceleration
+
+### Session Options
+
+Configure session behavior:
+
+- **Graph Optimization Level**: Control model optimization (disabled, basic, extended, all)
+- **Thread Count**: Set intra-op and inter-op thread parallelism
+- **Memory Patterns**: Enable/disable memory optimization strategies
+- **Execution Mode**: Sequential or parallel execution
+- **Provider Options**: Configure execution provider-specific settings
+
+## Basic Inference Workflow
+
+1. **Create Environment/Session Options** (optional)
+2. **Load Model**: Create an InferenceSession with your ONNX model
+3. **Inspect Model**: Query input/output names and shapes
+4. **Prepare Inputs**: Create tensors with your input data
+5. **Run Inference**: Execute the model with your inputs
+6. **Process Outputs**: Extract and use the prediction results
+
+## Language-Specific Guides
+
+Choose your programming language:
+
+<CardGroup cols={2}>
+  <Card title="Python API" icon="python" href="/inference/python-api">
+    Use ONNX Runtime in Python applications with NumPy integration
+  </Card>
+  
+  <Card title="C/C++ API" icon="c" href="/inference/c-cpp-api">
+    High-performance inference with native C++ code
+  </Card>
+  
+  <Card title="C# API" icon="code" href="/inference/csharp-api">
+    .NET integration for Windows, Linux, and cross-platform apps
+  </Card>
+  
+  <Card title="Java API" icon="java" href="/inference/java-api">
+    Java applications and Android development
+  </Card>
+  
+  <Card title="JavaScript API" icon="js" href="/inference/javascript-api">
+    Web browsers and Node.js applications
+  </Card>
+</CardGroup>
+
+## Performance Optimization
+
+For production deployments, see the [Model Optimization](/inference/model-optimization) guide to learn about:
+
+- Graph optimizations
+- Quantization
+- Model profiling
+- Memory optimization
+- Multi-threading strategies
+
+## Supported Platforms
+
+| Platform | Python | C/C++ | C# | Java | JavaScript |
+|----------|--------|-------|----|----- |------------|
+| Windows  | ✓      | ✓     | ✓  | ✓    | ✓ (Node.js)|
+| Linux    | ✓      | ✓     | ✓  | ✓    | ✓ (Node.js)|
+| macOS    | ✓      | ✓     | ✓  | ✓    | ✓ (Node.js)|
+| iOS      | -      | ✓     | ✓  | -    | -          |
+| Android  | -      | ✓     | -  | ✓    | -          |
+| Web      | -      | -     | -  | -    | ✓          |
+
+## Next Steps
+
+<Steps>
+  <Step title="Choose Your Language">
+    Select the API guide for your programming language from the cards above
+  </Step>
+  
+  <Step title="Run Your First Model">
+    Follow the quickstart examples to load and run an ONNX model
+  </Step>
+  
+  <Step title="Optimize for Production">
+    Learn about performance optimization and deployment best practices
+  </Step>
+</Steps>

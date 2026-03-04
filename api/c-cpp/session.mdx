@@ -1,0 +1,678 @@
+---
+title: Session Management
+description: Loading models and running inference with OrtSession
+---
+
+# Session Management
+
+The `OrtSession` object represents a loaded ONNX model and provides inference capabilities.
+
+## Creating Sessions
+
+### CreateSession
+
+```c
+OrtStatus* (*CreateSession)(const OrtEnv* env,
+                             const ORTCHAR_T* model_path,
+                             const OrtSessionOptions* options,
+                             OrtSession** out);
+```
+
+Create a session from a model file.
+
+**Parameters:**
+- `env`: Environment object
+- `model_path`: Path to the ONNX model file (`wchar_t*` on Windows, `char*` elsewhere)
+- `options`: Session options (configuration)
+- `out`: Newly created session (must be freed with `ReleaseSession`)
+
+**Returns:** `NULL` on success, error status otherwise
+
+**Example:**
+
+<CodeGroup>
+```c C API
+OrtEnv* env;
+OrtSessionOptions* session_options;
+OrtSession* session;
+
+OrtStatus* status = api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env);
+status = api->CreateSessionOptions(&session_options);
+status = api->CreateSession(env, model_path, session_options, &session);
+
+if (status != NULL) {
+    const char* msg = api->GetErrorMessage(status);
+    printf("Error: %s\n", msg);
+    api->ReleaseStatus(status);
+}
+```
+
+```cpp C++ API
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+Ort::SessionOptions session_options;
+Ort::Session session(env, model_path, session_options);
+```
+</CodeGroup>
+
+### CreateSessionFromArray
+
+```c
+OrtStatus* (*CreateSessionFromArray)(const OrtEnv* env,
+                                      const void* model_data,
+                                      size_t model_data_length,
+                                      const OrtSessionOptions* options,
+                                      OrtSession** out);
+```
+
+Create a session from an in-memory model.
+
+**Parameters:**
+- `env`: Environment object
+- `model_data`: Pointer to model data in memory
+- `model_data_length`: Size of model data in bytes
+- `options`: Session options
+- `out`: Newly created session
+
+**Example:**
+```c
+const void* model_data = /* loaded model bytes */;
+size_t model_size = /* size in bytes */;
+
+OrtSession* session;
+OrtStatus* status = api->CreateSessionFromArray(
+    env, model_data, model_size, session_options, &session);
+```
+
+### CreateSessionWithPrepackedWeightsContainer
+
+```c
+OrtStatus* (*CreateSessionWithPrepackedWeightsContainer)(
+    const OrtEnv* env,
+    const ORTCHAR_T* model_path,
+    const OrtSessionOptions* options,
+    OrtPrepackedWeightsContainer* prepacked_weights_container,
+    OrtSession** out);
+```
+
+Create a session that shares pre-packed weights between multiple sessions for memory efficiency.
+
+**Parameters:**
+- `env`: Environment object
+- `model_path`: Path to model file
+- `options`: Session options
+- `prepacked_weights_container`: Container for sharing pre-packed weights
+- `out`: Newly created session
+
+**Example:**
+```c
+OrtPrepackedWeightsContainer* prepacked_container;
+api->CreatePrepackedWeightsContainer(&prepacked_container);
+
+OrtSession* session1;
+api->CreateSessionWithPrepackedWeightsContainer(
+    env, model_path, options, prepacked_container, &session1);
+
+OrtSession* session2;  // Shares weights with session1
+api->CreateSessionWithPrepackedWeightsContainer(
+    env, model_path, options, prepacked_container, &session2);
+```
+
+### ReleaseSession
+
+```c
+void (*ReleaseSession)(OrtSession* session);
+```
+
+Free a session object.
+
+**Parameters:**
+- `session`: Session to free (can be NULL)
+
+**Warning:** Do not call from `DllMain` on Windows as the session owns a thread pool.
+
+## Querying Session Information
+
+### SessionGetInputCount
+
+```c
+OrtStatus* (*SessionGetInputCount)(const OrtSession* session, size_t* out);
+```
+
+Get the number of inputs required by the model.
+
+**Parameters:**
+- `session`: Session to query
+- `out`: Number of inputs
+
+**Example:**
+```c
+size_t num_inputs;
+api->SessionGetInputCount(session, &num_inputs);
+printf("Model has %zu inputs\n", num_inputs);
+```
+
+### SessionGetOutputCount
+
+```c
+OrtStatus* (*SessionGetOutputCount)(const OrtSession* session, size_t* out);
+```
+
+Get the number of outputs produced by the model.
+
+**Parameters:**
+- `session`: Session to query
+- `out`: Number of outputs
+
+### SessionGetInputName
+
+```c
+OrtStatus* (*SessionGetInputName)(const OrtSession* session,
+                                   size_t index,
+                                   OrtAllocator* allocator,
+                                   char** value);
+```
+
+Get the name of an input.
+
+**Parameters:**
+- `session`: Session to query
+- `index`: Input index (0 to `num_inputs - 1`)
+- `allocator`: Allocator to use for the returned string
+- `value`: UTF-8 null-terminated input name (must be freed using `allocator`)
+
+**Example:**
+```c
+OrtAllocator* allocator;
+api->GetAllocatorWithDefaultOptions(&allocator);
+
+for (size_t i = 0; i < num_inputs; i++) {
+    char* input_name;
+    api->SessionGetInputName(session, i, allocator, &input_name);
+    printf("Input %zu: %s\n", i, input_name);
+    allocator->Free(allocator, input_name);
+}
+```
+
+### SessionGetOutputName
+
+```c
+OrtStatus* (*SessionGetOutputName)(const OrtSession* session,
+                                    size_t index,
+                                    OrtAllocator* allocator,
+                                    char** value);
+```
+
+Get the name of an output.
+
+**Parameters:**
+- `session`: Session to query
+- `index`: Output index (0 to `num_outputs - 1`)
+- `allocator`: Allocator to use for the returned string
+- `value`: UTF-8 null-terminated output name (must be freed using `allocator`)
+
+### SessionGetInputTypeInfo
+
+```c
+OrtStatus* (*SessionGetInputTypeInfo)(const OrtSession* session,
+                                       size_t index,
+                                       OrtTypeInfo** type_info);
+```
+
+Get type information for an input.
+
+**Parameters:**
+- `session`: Session to query
+- `index`: Input index
+- `type_info`: Type information (must be freed with `ReleaseTypeInfo`)
+
+**Example:**
+```c
+OrtTypeInfo* type_info;
+api->SessionGetInputTypeInfo(session, 0, &type_info);
+
+const OrtTensorTypeAndShapeInfo* tensor_info;
+api->CastTypeInfoToTensorInfo(type_info, &tensor_info);
+
+ONNXTensorElementDataType elem_type;
+api->GetTensorElementType(tensor_info, &elem_type);
+
+size_t num_dims;
+api->GetDimensionsCount(tensor_info, &num_dims);
+
+int64_t dims[num_dims];
+api->GetDimensions(tensor_info, dims, num_dims);
+
+api->ReleaseTypeInfo(type_info);
+```
+
+### SessionGetOutputTypeInfo
+
+```c
+OrtStatus* (*SessionGetOutputTypeInfo)(const OrtSession* session,
+                                        size_t index,
+                                        OrtTypeInfo** type_info);
+```
+
+Get type information for an output.
+
+### SessionGetOverridableInitializerCount
+
+```c
+OrtStatus* (*SessionGetOverridableInitializerCount)(
+    const OrtSession* session,
+    size_t* out);
+```
+
+Get the count of overridable initializers in the model.
+
+**Parameters:**
+- `session`: Session to query
+- `out`: Number of overridable initializers
+
+## Running Inference
+
+### Run
+
+```c
+OrtStatus* (*Run)(OrtSession* session,
+                   const OrtRunOptions* run_options,
+                   const char* const* input_names,
+                   const OrtValue* const* inputs,
+                   size_t input_len,
+                   const char* const* output_names,
+                   size_t output_names_len,
+                   OrtValue** outputs);
+```
+
+Run the model with the given inputs.
+
+**Parameters:**
+- `session`: Session to run
+- `run_options`: Run options (can be NULL for defaults)
+- `input_names`: Array of null-terminated UTF-8 input names
+- `inputs`: Array of input `OrtValue` objects
+- `input_len`: Number of inputs
+- `output_names`: Array of null-terminated UTF-8 output names
+- `output_names_len`: Number of outputs
+- `outputs`: Array to receive output `OrtValue` objects (can be pre-allocated or NULL)
+
+**Returns:** `NULL` on success, error status otherwise
+
+**Example:**
+
+<CodeGroup>
+```c C API
+// Prepare inputs
+const char* input_names[] = {"input"};
+OrtValue* input_tensor = /* create input tensor */;
+const OrtValue* inputs[] = {input_tensor};
+
+// Prepare outputs
+const char* output_names[] = {"output"};
+OrtValue* output_tensor = NULL;
+
+// Run inference
+OrtStatus* status = api->Run(
+    session,
+    NULL,  // use default run options
+    input_names,
+    inputs,
+    1,  // number of inputs
+    output_names,
+    1,  // number of outputs
+    &output_tensor
+);
+
+if (status == NULL) {
+    // Process output_tensor
+    float* output_data;
+    api->GetTensorMutableData(output_tensor, (void**)&output_data);
+    // Use output_data...
+    
+    api->ReleaseValue(output_tensor);
+}
+```
+
+```cpp C++ API
+auto input_tensor = /* create input tensor */;
+std::vector<Ort::Value> input_tensors;
+input_tensors.push_back(std::move(input_tensor));
+
+std::vector<const char*> input_names = {"input"};
+std::vector<const char*> output_names = {"output"};
+
+auto output_tensors = session.Run(
+    Ort::RunOptions{nullptr},
+    input_names.data(),
+    input_tensors.data(),
+    input_tensors.size(),
+    output_names.data(),
+    output_names.size()
+);
+
+float* output_data = output_tensors[0].GetTensorMutableData<float>();
+```
+</CodeGroup>
+
+### RunAsync (Callback-based)
+
+For asynchronous inference, use the callback-based API:
+
+```c
+typedef void (*RunAsyncCallbackFn)(
+    void* user_data,
+    OrtValue** outputs,
+    size_t num_outputs,
+    OrtStatusPtr status);
+
+OrtStatus* (*RunAsync)(OrtSession* session,
+                        const OrtRunOptions* run_options,
+                        const char* const* input_names,
+                        const OrtValue* const* inputs,
+                        size_t input_len,
+                        const char* const* output_names,
+                        size_t output_names_len,
+                        RunAsyncCallbackFn run_async_callback,
+                        void* user_data);
+```
+
+## Run Options
+
+### CreateRunOptions
+
+```c
+OrtStatus* (*CreateRunOptions)(OrtRunOptions** out);
+```
+
+Create run options for per-run configuration.
+
+**Parameters:**
+- `out`: Newly created run options (must be freed with `ReleaseRunOptions`)
+
+### RunOptionsSetRunLogVerbosityLevel
+
+```c
+OrtStatus* (*RunOptionsSetRunLogVerbosityLevel)(
+    OrtRunOptions* options,
+    int log_verbosity_level);
+```
+
+Set per-run log verbosity level.
+
+### RunOptionsSetRunLogSeverityLevel
+
+```c
+OrtStatus* (*RunOptionsSetRunLogSeverityLevel)(
+    OrtRunOptions* options,
+    int log_severity_level);
+```
+
+Set per-run log severity level.
+
+### RunOptionsSetRunTag
+
+```c
+OrtStatus* (*RunOptionsSetRunTag)(OrtRunOptions* options,
+                                   const char* run_tag);
+```
+
+Set a tag for the run (used in logging).
+
+### RunOptionsSetTerminate
+
+```c
+OrtStatus* (*RunOptionsSetTerminate)(OrtRunOptions* options);
+```
+
+Set a flag to terminate a currently executing session from another thread.
+
+### RunOptionsUnsetTerminate
+
+```c
+OrtStatus* (*RunOptionsUnsetTerminate)(OrtRunOptions* options);
+```
+
+Clear the terminate flag so the run options can be reused.
+
+### AddRunConfigEntry
+
+```c
+OrtStatus* (*AddRunConfigEntry)(OrtRunOptions* options,
+                                 const char* config_key,
+                                 const char* config_value);
+```
+
+Add a run configuration entry.
+
+See `onnxruntime_run_options_config_keys.h` for valid keys.
+
+### ReleaseRunOptions
+
+```c
+void (*ReleaseRunOptions)(OrtRunOptions* options);
+```
+
+Free run options.
+
+## IO Binding (Advanced)
+
+IO Binding allows binding pre-allocated memory for inputs and outputs to avoid copies.
+
+### CreateIoBinding
+
+```c
+OrtStatus* (*CreateIoBinding)(OrtSession* session, OrtIoBinding** out);
+```
+
+Create an IO binding for a session.
+
+**Parameters:**
+- `session`: Session to create binding for
+- `out`: Newly created IO binding (must be freed with `ReleaseIoBinding`)
+
+### BindInput
+
+```c
+OrtStatus* (*BindInput)(OrtIoBinding* binding_ptr,
+                        const char* name,
+                        const OrtValue* val_ptr);
+```
+
+Bind an input value.
+
+**Parameters:**
+- `binding_ptr`: IO binding
+- `name`: Input name
+- `val_ptr`: Input tensor value
+
+### BindOutput
+
+```c
+OrtStatus* (*BindOutput)(OrtIoBinding* binding_ptr,
+                         const char* name,
+                         const OrtValue* val_ptr);
+```
+
+Bind an output value.
+
+### BindOutputToDevice
+
+```c
+OrtStatus* (*BindOutputToDevice)(OrtIoBinding* binding_ptr,
+                                  const char* name,
+                                  const OrtMemoryInfo* mem_info_ptr);
+```
+
+Bind an output to a device for dynamic shapes.
+
+**Parameters:**
+- `binding_ptr`: IO binding
+- `name`: Output name
+- `mem_info_ptr`: Memory location for output allocation
+
+### RunWithBinding
+
+```c
+OrtStatus* (*RunWithBinding)(OrtSession* session,
+                              const OrtRunOptions* run_options,
+                              const OrtIoBinding* binding_ptr);
+```
+
+Run inference using IO binding.
+
+**Example:**
+```c
+OrtIoBinding* io_binding;
+api->CreateIoBinding(session, &io_binding);
+
+// Bind inputs
+api->BindInput(io_binding, "input", input_tensor);
+
+// Bind outputs (can use pre-allocated memory on GPU)
+api->BindOutput(io_binding, "output", output_tensor);
+// Or bind to device for dynamic shapes
+api->BindOutputToDevice(io_binding, "output", gpu_mem_info);
+
+// Run
+api->RunWithBinding(session, NULL, io_binding);
+
+// Get outputs
+size_t output_count;
+OrtValue** outputs;
+api->GetBoundOutputValues(io_binding, allocator, &outputs, &output_count);
+
+api->ReleaseIoBinding(io_binding);
+```
+
+### ClearBoundInputs
+
+```c
+void (*ClearBoundInputs)(OrtIoBinding* binding_ptr);
+```
+
+Clear all bound inputs.
+
+### ClearBoundOutputs
+
+```c
+void (*ClearBoundOutputs)(OrtIoBinding* binding_ptr);
+```
+
+Clear all bound outputs.
+
+### ReleaseIoBinding
+
+```c
+void (*ReleaseIoBinding)(OrtIoBinding* binding);
+```
+
+Free an IO binding.
+
+## Model Metadata
+
+### SessionGetModelMetadata
+
+```c
+OrtStatus* (*SessionGetModelMetadata)(const OrtSession* session,
+                                       OrtModelMetadata** out);
+```
+
+Get model metadata.
+
+**Parameters:**
+- `session`: Session to query
+- `out`: Model metadata (must be freed with `ReleaseModelMetadata`)
+
+### ModelMetadataGetProducerName
+
+```c
+OrtStatus* (*ModelMetadataGetProducerName)(
+    const OrtModelMetadata* model_metadata,
+    OrtAllocator* allocator,
+    char** value);
+```
+
+Get the producer name from model metadata.
+
+### ModelMetadataGetGraphName
+
+```c
+OrtStatus* (*ModelMetadataGetGraphName)(
+    const OrtModelMetadata* model_metadata,
+    OrtAllocator* allocator,
+    char** value);
+```
+
+Get the graph name.
+
+### ModelMetadataGetVersion
+
+```c
+OrtStatus* (*ModelMetadataGetVersion)(
+    const OrtModelMetadata* model_metadata,
+    int64_t* value);
+```
+
+Get the model version number.
+
+### ModelMetadataLookupCustomMetadataMap
+
+```c
+OrtStatus* (*ModelMetadataLookupCustomMetadataMap)(
+    const OrtModelMetadata* model_metadata,
+    OrtAllocator* allocator,
+    const char* key,
+    char** value);
+```
+
+Lookup a value in the custom metadata map.
+
+**Parameters:**
+- `model_metadata`: Metadata object
+- `allocator`: Allocator for returned string
+- `key`: Metadata key to lookup
+- `value`: Retrieved value (NULL if key not found, must be freed with `allocator`)
+
+### ReleaseModelMetadata
+
+```c
+void (*ReleaseModelMetadata)(OrtModelMetadata* metadata);
+```
+
+Free model metadata.
+
+## Profiling
+
+### SessionEndProfiling
+
+```c
+OrtStatus* (*SessionEndProfiling)(OrtSession* session,
+                                   OrtAllocator* allocator,
+                                   char** out);
+```
+
+End profiling and get the profile data filename.
+
+**Parameters:**
+- `session`: Session being profiled
+- `allocator`: Allocator for returned string
+- `out`: Filename where profile data was written (must be freed with `allocator`)
+
+**Note:** Profiling must be enabled via `EnableProfiling` in session options.
+
+### SessionGetProfilingStartTimeNs
+
+```c
+OrtStatus* (*SessionGetProfilingStartTimeNs)(
+    const OrtSession* session,
+    uint64_t* out);
+```
+
+Get the profiling start time in nanoseconds.
+
+## See Also
+
+- [C/C++ API Overview](./overview)
+- [Tensor Operations](./tensors)
+- [Execution Providers](./providers)
+- [OrtApi Reference](./ort-api)

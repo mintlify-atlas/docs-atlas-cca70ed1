@@ -1,122 +1,167 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "ONNX Runtime",
+  "theme": "sequoia",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#646464",
+    "light": "#424242",
+    "dark": "#bbbbbb"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/d3cd90e5-b7f4-40a8-9481-b2423de5774c.jpg",
+  "logo": {
+    "light": "https://media.brand.dev/b62d08ec-229d-460d-96a6-211a4708cde3.svg",
+    "dark": "https://media.brand.dev/b62d08ec-229d-460d-96a6-211a4708cde3.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/microsoft/onnxruntime"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/microsoft/onnxruntime"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/overview",
+              "concepts/onnx-format",
+              "concepts/execution-providers",
+              "concepts/sessions",
+              "concepts/graph-optimizations"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Inference",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "inference/overview",
+              "inference/python-api",
+              "inference/c-cpp-api",
+              "inference/csharp-api",
+              "inference/java-api",
+              "inference/javascript-api",
+              "inference/model-optimization"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Training",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "training/overview",
+              "training/on-device-training",
+              "training/ortmodule",
+              "training/distributed-training"
+            ]
+          },
+          {
+            "group": "Execution Providers",
+            "pages": [
+              "execution-providers/overview",
+              "execution-providers/cuda",
+              "execution-providers/tensorrt",
+              "execution-providers/directml",
+              "execution-providers/openvino",
+              "execution-providers/coreml",
+              "execution-providers/qnn",
+              "execution-providers/webgpu"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": [
+              "performance/tuning",
+              "performance/benchmarking",
+              "performance/memory-optimization",
+              "performance/threading"
+            ]
+          },
+          {
+            "group": "Model Conversion",
+            "pages": [
+              "model-conversion/pytorch",
+              "model-conversion/tensorflow",
+              "model-conversion/scikit-learn",
+              "model-conversion/quantization"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-operators",
+              "advanced/ort-format",
+              "advanced/mobile-deployment",
+              "advanced/webassembly",
+              "advanced/server-deployment"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Python API",
             "pages": [
-              "api-reference/introduction"
+              "api/python/inference-session",
+              "api/python/session-options",
+              "api/python/run-options",
+              "api/python/io-binding",
+              "api/python/providers",
+              "api/python/quantization",
+              "api/python/transformers"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "C/C++ API",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/c-cpp/overview",
+              "api/c-cpp/ort-api",
+              "api/c-cpp/session",
+              "api/c-cpp/tensors",
+              "api/c-cpp/providers"
+            ]
+          },
+          {
+            "group": "C# API",
+            "pages": [
+              "api/csharp/inference-session",
+              "api/csharp/session-options",
+              "api/csharp/tensors"
+            ]
+          },
+          {
+            "group": "Java API",
+            "pages": [
+              "api/java/overview",
+              "api/java/ort-session",
+              "api/java/ort-environment"
+            ]
+          },
+          {
+            "group": "JavaScript API",
+            "pages": [
+              "api/javascript/inference-session",
+              "api/javascript/tensor",
+              "api/javascript/web",
+              "api/javascript/node"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

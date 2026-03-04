@@ -1,0 +1,420 @@
+---
+title: Mobile Deployment
+description: Deploy ONNX Runtime models on Android and iOS devices
+---
+
+ONNX Runtime provides optimized mobile deployment for Android and iOS platforms with support for multiple execution providers.
+
+## Android Deployment
+
+### Prerequisites
+
+- Android NDK r21 or later
+- Android SDK API level 21 or higher
+- Gradle 6.0 or later
+
+### Adding ONNX Runtime to Android Project
+
+#### Using AAR Package
+
+Add to your `build.gradle`:
+
+```gradle
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.17.0'
+}
+```
+
+#### For GPU Support (NNAPI)
+
+```gradle
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.17.0'
+    implementation 'com.microsoft.onnxruntime:onnxruntime-extensions-android:0.9.0'
+}
+```
+
+### Basic Android Usage
+
+```java
+import ai.onnxruntime.*;
+
+public class ModelInference {
+    private OrtEnvironment env;
+    private OrtSession session;
+    
+    public void initialize(String modelPath) throws OrtException {
+        // Create environment
+        env = OrtEnvironment.getEnvironment();
+        
+        // Create session options
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        
+        // Load model
+        session = env.createSession(modelPath, options);
+    }
+    
+    public float[] runInference(float[] inputData, long[] shape) throws OrtException {
+        // Create input tensor
+        OnnxTensor inputTensor = OnnxTensor.createTensor(env, 
+            FloatBuffer.wrap(inputData), shape);
+        
+        // Run inference
+        Map<String, OnnxTensor> inputs = Collections.singletonMap("input", inputTensor);
+        OrtSession.Result results = session.run(inputs);
+        
+        // Get output
+        float[] output = ((OnnxTensor)results.get(0)).getFloatBuffer().array();
+        
+        // Clean up
+        inputTensor.close();
+        results.close();
+        
+        return output;
+    }
+    
+    public void cleanup() {
+        if (session != null) session.close();
+        if (env != null) env.close();
+    }
+}
+```
+
+### Using NNAPI Execution Provider
+
+NNAPI provides hardware acceleration on Android:
+
+```java
+import ai.onnxruntime.providers.NNAPIFlags;
+
+OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+
+// Add NNAPI execution provider
+EnumSet<NNAPIFlags> flags = EnumSet.of(
+    NNAPIFlags.USE_FP16,
+    NNAPIFlags.CPU_DISABLED
+);
+options.addNNAPI(flags);
+
+session = env.createSession(modelPath, options);
+```
+
+### Loading Models from Assets
+
+```java
+import android.content.res.AssetManager;
+import java.io.InputStream;
+
+public byte[] loadModelFromAssets(AssetManager assetManager, String modelName) 
+        throws IOException {
+    InputStream inputStream = assetManager.open(modelName);
+    byte[] modelBytes = new byte[inputStream.available()];
+    inputStream.read(modelBytes);
+    inputStream.close();
+    return modelBytes;
+}
+
+// Use byte array to create session
+byte[] modelBytes = loadModelFromAssets(getAssets(), "model.ort");
+session = env.createSession(modelBytes, options);
+```
+
+### Android Build Configuration
+
+#### For Different ABIs
+
+```gradle
+android {
+    defaultConfig {
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+}
+```
+
+#### ProGuard Rules
+
+Add to `proguard-rules.pro`:
+
+```proguard
+-keep class ai.onnxruntime.** { *; }
+-keep class com.microsoft.onnxruntime.** { *; }
+```
+
+## iOS Deployment
+
+### Prerequisites
+
+- Xcode 12.0 or later
+- iOS 11.0 or later
+- CocoaPods or Swift Package Manager
+
+### Adding ONNX Runtime to iOS Project
+
+#### Using CocoaPods
+
+Add to your `Podfile`:
+
+```ruby
+pod 'onnxruntime-objc', '~> 1.17.0'
+```
+
+For CoreML support:
+
+```ruby
+pod 'onnxruntime-objc', '~> 1.17.0'
+pod 'onnxruntime-extensions-objc'
+```
+
+Then run:
+
+```bash
+pod install
+```
+
+#### Using Swift Package Manager
+
+Add to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager.git",
+             from: "1.17.0")
+]
+```
+
+### Basic iOS Usage (Objective-C)
+
+```objc
+#import <onnxruntime/onnxruntime.h>
+
+@interface ModelInference : NSObject
+@property (nonatomic) ORTEnv *env;
+@property (nonatomic) ORTSession *session;
+@end
+
+@implementation ModelInference
+
+- (BOOL)initializeWithModelPath:(NSString *)modelPath error:(NSError **)error {
+    // Create environment
+    self.env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning 
+                                              error:error];
+    if (!self.env) return NO;
+    
+    // Create session options
+    ORTSessionOptions *options = [[ORTSessionOptions alloc] initWithError:error];
+    if (!options) return NO;
+    
+    // Load model
+    self.session = [[ORTSession alloc] initWithEnv:self.env
+                                         modelPath:modelPath
+                                    sessionOptions:options
+                                             error:error];
+    return self.session != nil;
+}
+
+- (NSArray<NSNumber *> *)runInferenceWithInput:(NSArray<NSNumber *> *)inputData
+                                          shape:(NSArray<NSNumber *> *)shape
+                                          error:(NSError **)error {
+    // Create input tensor
+    ORTValue *inputTensor = [ORTValue tensorWithData:inputData
+                                               shape:shape
+                                                type:ORTTensorElementDataTypeFloat
+                                               error:error];
+    if (!inputTensor) return nil;
+    
+    // Run inference
+    NSDictionary *inputs = @{@"input": inputTensor};
+    NSArray<ORTValue *> *outputs = [self.session runWithInputs:inputs
+                                                    outputNames:nil
+                                                          error:error];
+    if (!outputs) return nil;
+    
+    // Get output data
+    return [outputs[0] tensorData];
+}
+
+@end
+```
+
+### Swift Usage
+
+```swift
+import onnxruntime_objc
+
+class ModelInference {
+    private var env: ORTEnv?
+    private var session: ORTSession?
+    
+    func initialize(modelPath: String) throws {
+        // Create environment
+        env = try ORTEnv(loggingLevel: .warning)
+        
+        // Create session options
+        let options = try ORTSessionOptions()
+        
+        // Load model
+        session = try ORTSession(env: env!, 
+                                modelPath: modelPath,
+                                sessionOptions: options)
+    }
+    
+    func runInference(inputData: [Float], shape: [NSNumber]) throws -> [Float] {
+        guard let session = session, let env = env else {
+            throw NSError(domain: "ModelInference", code: -1)
+        }
+        
+        // Create input tensor
+        let inputTensor = try ORTValue.tensor(
+            withData: NSMutableData(bytes: inputData, length: inputData.count * 4),
+            shape: shape,
+            type: .float
+        )
+        
+        // Run inference
+        let outputs = try session.run(
+            withInputs: ["input": inputTensor],
+            outputNames: nil,
+            runOptions: nil
+        )
+        
+        // Get output
+        let outputTensor = outputs[0]
+        let outputData = try outputTensor.tensorData() as! [Float]
+        
+        return outputData
+    }
+}
+```
+
+### Using CoreML Execution Provider
+
+```swift
+import onnxruntime_objc
+
+let options = try ORTSessionOptions()
+
+// Add CoreML execution provider
+try options.appendCoreMLExecutionProvider()
+
+let session = try ORTSession(env: env, 
+                            modelPath: modelPath,
+                            sessionOptions: options)
+```
+
+### Loading Models from Bundle
+
+```swift
+guard let modelPath = Bundle.main.path(forResource: "model", ofType: "ort") else {
+    throw NSError(domain: "Model not found", code: -1)
+}
+
+try initialize(modelPath: modelPath)
+```
+
+## Performance Optimization
+
+### Model Optimization
+
+1. **Use ORT format**: Convert models to `.ort` format for faster loading
+2. **Quantization**: Use INT8 quantization for smaller model size
+3. **Graph optimizations**: Enable extended optimizations
+
+### Android Optimizations
+
+```java
+OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+
+// Set intra-op threads
+options.setIntraOpNumThreads(4);
+
+// Set graph optimization level
+options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+
+// Enable memory pattern optimization
+options.setMemoryPatternOptimization(true);
+```
+
+### iOS Optimizations
+
+```swift
+let options = try ORTSessionOptions()
+
+// Set thread count
+try options.setIntraOpNumThreads(4)
+
+// Set optimization level
+try options.setGraphOptimizationLevel(.all)
+
+// Enable memory optimizations
+try options.enableMemPattern()
+try options.enableCpuMemArena()
+```
+
+## Testing on Emulator/Simulator
+
+### Android Emulator
+
+Build for x86_64 ABI when testing on emulator:
+
+```bash
+./build.sh --android_abi x86_64
+```
+
+Using ADB to test:
+
+```bash
+adb push model.ort /data/local/tmp/
+adb shell
+cd /data/local/tmp && ./onnx_test_runner model_directory
+```
+
+### iOS Simulator
+
+Note: Some execution providers (like CoreML) may have limited functionality on simulator.
+
+## Best Practices
+
+### Resource Management
+
+- Always close sessions and environments when done
+- Use try-with-resources (Java) or defer (Swift)
+- Monitor memory usage with profiling tools
+
+### Model Size
+
+- Keep models under 50MB for better startup performance
+- Use quantization to reduce model size
+- Consider model splitting for very large models
+
+### Battery Consumption
+
+- Use NNAPI/CoreML for hardware acceleration
+- Batch inference requests when possible
+- Profile power consumption during testing
+
+## Troubleshooting
+
+### Common Issues
+
+**Model loading fails on Android:**
+- Check file permissions
+- Verify model is in correct format (`.ort` recommended)
+- Ensure sufficient storage space
+
+**NNAPI errors:**
+- Test on different Android versions
+- Fallback to CPU if NNAPI fails
+- Check operator compatibility
+
+**iOS build errors:**
+- Verify Xcode version compatibility
+- Check minimum iOS version
+- Clear derived data
+
+## Resources
+
+- [Android Build Instructions](https://onnxruntime.ai/docs/build/android.html)
+- [iOS Build Instructions](https://onnxruntime.ai/docs/build/ios.html)
+- [Mobile Examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile)

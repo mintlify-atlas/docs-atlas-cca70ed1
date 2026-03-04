@@ -1,0 +1,481 @@
+---
+title: Memory Optimization
+description: Techniques for optimizing memory usage in ONNX Runtime including memory patterns, arena allocation, and recomputation strategies
+---
+
+## Overview
+
+ONNX Runtime provides multiple strategies for optimizing memory usage during model inference and training. This guide covers memory management techniques, the Memory Optimizer for training, and best practices for reducing memory footprint.
+
+## Memory Management Basics
+
+### Memory Arenas
+
+ONNX Runtime uses memory arenas to reduce allocation overhead:
+
+```python
+import onnxruntime as ort
+
+session_options = ort.SessionOptions()
+
+# Enable CPU memory arena (default: True)
+session_options.enable_cpu_mem_arena = True
+
+# Enable memory pattern optimization
+session_options.enable_mem_pattern = True
+
+session = ort.InferenceSession("model.onnx", session_options)
+```
+
+```cpp
+// C++ API
+SessionOptions session_options;
+session_options.EnableCpuMemArena();
+session_options.EnableMemPattern();
+```
+
+### Memory Pattern Optimization
+
+Memory pattern optimization pre-allocates memory based on the model's execution pattern:
+
+- Analyzes memory usage during the first inference
+- Pre-allocates required memory for subsequent runs
+- Reduces allocation overhead and fragmentation
+
+## GPU Memory Management
+
+### Limiting GPU Memory
+
+```python
+# Limit CUDA memory usage
+cuda_provider_options = {
+    'device_id': 0,
+    'arena_extend_strategy': 'kNextPowerOfTwo',
+    'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB limit
+    'cudnn_conv_algo_search': 'DEFAULT',
+}
+
+session_options.append_execution_provider('CUDAExecutionProvider', cuda_provider_options)
+```
+
+### Arena Extension Strategies
+
+**kNextPowerOfTwo**: Extends memory in power-of-two increments (default)
+```python
+'arena_extend_strategy': 'kNextPowerOfTwo'
+```
+
+**kSameAsRequested**: Extends memory by exact amount needed
+```python
+'arena_extend_strategy': 'kSameAsRequested'  # Lower memory overhead
+```
+
+## Memory Optimizer for Training
+
+The Memory Optimizer trades computation for memory by recomputing activations instead of storing them.
+
+### When to Use Memory Optimizer
+
+Memory Optimizer is beneficial when:
+
+- Training fails with OOM (Out of Memory) at minimum batch size
+- You can run batch size N but want to run 2N without OOM
+- GPU compute and memory bandwidth are not fully saturated
+
+### Mode 1: Transformer Layerwise Recompute
+
+Simple one-line configuration for transformer models:
+
+```python
+import os
+from onnxruntime.training.ortmodule import ORTModule
+
+# Enable transformer layerwise recompute
+os.environ['ORTMODULE_MEMORY_OPT_LEVEL'] = '1'
+
+# Integrate with your model
+model = build_model()
+model = ORTModule(model)
+
+# Train as usual
+```
+
+This automatically recomputes all supported nodes within transformer layers (attention and MLP sublayers).
+
+#### Memory Optimization Levels
+
+```bash
+# Level 0: Disabled (default)
+export ORTMODULE_MEMORY_OPT_LEVEL=0
+
+# Level 1: Transformer layerwise recompute
+export ORTMODULE_MEMORY_OPT_LEVEL=1
+
+# Level 2: Aggressive recompute (includes compromised plans)
+export ORTMODULE_MEMORY_OPT_LEVEL=2
+```
+
+#### Example Output
+
+```
+Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE]
+                                Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
+- Plan 1            :  ON   :  Reshape+Where+:1:-1                                  1     134,217,728        128.0*batch*seq_len**2
+- Plan 2            :  ON   :  BiasSoftmax+:1:-1                                    1     134,086,656        128.0*batch*seq_len*(seq_len-1)
+- Plan 3            :  ON   :  Cast+:1:-1                                           1     67,043,328         64.0*batch*seq_len*(seq_len-1)
+- Plan 4            :  ON   :  BiasGelu+:1:-1                                       1     20,951,040         20480.0*batch*(seq_len-1)
+- Plan 5            :  ON   :  FusedMatMul+:1:-1                                    1     20,951,040         20480.0*batch*(seq_len-1)
+```
+
+### Mode 2: Manual Subgraph Selection
+
+Advanced mode for fine-grained control:
+
+#### Step 1: Discover Available Plans
+
+```python
+import os
+from onnxruntime.training.ortmodule import ORTModule
+
+# Run with default level to see available plans
+model = ORTModule(build_model())
+
+# Train for a few steps and check logs
+# Look for output showing available recompute plans
+```
+
+#### Step 2: Create Configuration File
+
+```json
+[
+    "BiasGelu+:1:-1",
+    "FusedMatMul+:1:1",
+    "Cast+:1:-1"
+]
+```
+
+Configuration format: `"<ClusterID>:<Strategy>:<RequestCount>"`
+
+- **ClusterID**: Subgraph pattern (e.g., "BiasGelu+")
+- **Strategy**: 0=disabled, 1=recompute, 2=compromised recompute
+- **RequestCount**: Number of occurrences to apply (-1 = all)
+
+#### Step 3: Apply Configuration
+
+```bash
+export ORTMODULE_MEMORY_OPT_LEVEL=0
+export ORTMODULE_MEMORY_OPT_CONFIG="mem_opt.json"
+```
+
+```python
+# Run training with configuration
+model = ORTModule(build_model())
+# Memory optimizer will use specified config
+```
+
+### Configuration Examples
+
+#### Example 1: Recompute All BiasGelu Operations
+
+```json
+[
+    "BiasGelu+:1:-1"
+]
+```
+
+#### Example 2: Recompute First Dropout Only
+
+```json
+[
+    "Dropout+:1:1"
+]
+```
+
+#### Example 3: Multiple Subgraphs
+
+```json
+[
+    "BiasGelu+:1:-1",
+    "Dropout+:1:-1",
+    "Cast+:1:2"
+]
+```
+
+#### Example 4: Compromised Recompute
+
+Saves partial memory (e.g., 50% of activations):
+
+```json
+[
+    "Cast+:2:-1"
+]
+```
+
+### Debug Information
+
+Enable detailed logging:
+
+```python
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel
+
+model = ORTModule(
+    pt_model,
+    DebugOptions(log_level=LogLevel.DEVINFO)
+)
+```
+
+Detailed output includes:
+- Node-level activation patterns
+- Memory saving opportunities
+- Reuse frequency of activations
+- Byte savings per optimization
+
+## I/O Binding for Memory Efficiency
+
+### Zero-Copy Inference
+
+Eliminate memory copies between host and device:
+
+```python
+import numpy as np
+
+session = ort.InferenceSession("model.onnx")
+io_binding = session.io_binding()
+
+# Bind input directly
+input_array = np.random.randn(1, 3, 224, 224).astype(np.float32)
+io_binding.bind_cpu_input('input', input_array)
+
+# Bind output (pre-allocate)
+io_binding.bind_output('output')
+
+# Run without copying
+session.run_with_iobinding(io_binding)
+
+# Get outputs
+outputs = io_binding.copy_outputs_to_cpu()
+```
+
+### GPU Zero-Copy
+
+```python
+import torch
+
+# Create input on GPU
+input_tensor = torch.randn(1, 3, 224, 224, device='cuda:0')
+
+# Bind GPU memory directly
+io_binding.bind_input(
+    name='input',
+    device_type='cuda',
+    device_id=0,
+    element_type=np.float32,
+    shape=input_tensor.shape,
+    buffer_ptr=input_tensor.data_ptr()
+)
+
+# Bind GPU output
+io_binding.bind_output(
+    name='output',
+    device_type='cuda',
+    device_id=0,
+    element_type=np.float32,
+    shape=output_shape
+)
+
+session.run_with_iobinding(io_binding)
+```
+
+## Memory Profiling
+
+### Track Memory Usage
+
+```python
+import psutil
+import os
+
+def profile_memory(session, input_data, input_name):
+    """Profile memory usage during inference."""
+    process = psutil.Process(os.getpid())
+    
+    # Baseline memory
+    baseline = process.memory_info().rss / 1024 / 1024  # MB
+    
+    # Run inference
+    for _ in range(100):
+        session.run(None, {input_name: input_data})
+    
+    # Peak memory
+    peak = process.memory_info().rss / 1024 / 1024
+    
+    print(f"Baseline: {baseline:.2f} MB")
+    print(f"Peak: {peak:.2f} MB")
+    print(f"Increase: {peak - baseline:.2f} MB")
+```
+
+### GPU Memory Profiling
+
+```python
+import torch
+
+def profile_gpu_memory(session, input_data, input_name):
+    """Profile GPU memory usage."""
+    torch.cuda.reset_peak_memory_stats()
+    
+    # Run inference
+    session.run(None, {input_name: input_data})
+    
+    allocated = torch.cuda.memory_allocated() / 1024 / 1024  # MB
+    peak = torch.cuda.max_memory_allocated() / 1024 / 1024
+    
+    print(f"Allocated: {allocated:.2f} MB")
+    print(f"Peak: {peak:.2f} MB")
+```
+
+## Model Optimization for Memory
+
+### Quantization
+
+Reduce memory footprint with quantization:
+
+```python
+from onnxruntime.quantization import quantize_dynamic
+
+# Dynamic quantization
+quantize_dynamic(
+    model_input="model.onnx",
+    model_output="model_quantized.onnx",
+    weight_type=QuantType.QInt8
+)
+
+# Typical memory reduction: 4x (FP32 -> INT8)
+```
+
+### Graph Optimization
+
+```python
+# Enable all graph optimizations
+session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+# Save optimized graph
+session_options.optimized_model_filepath = "optimized.onnx"
+```
+
+## Best Practices
+
+### 1. Enable Memory Patterns
+
+```python
+session_options.enable_mem_pattern = True
+session_options.enable_cpu_mem_arena = True
+```
+
+### 2. Use Appropriate Batch Sizes
+
+```python
+# Find optimal batch size
+for batch_size in [1, 2, 4, 8, 16, 32]:
+    try:
+        test_inference(batch_size)
+        print(f"Batch size {batch_size}: OK")
+    except RuntimeError as e:
+        print(f"Batch size {batch_size}: OOM")
+        break
+```
+
+### 3. Limit GPU Memory Growth
+
+```python
+cuda_options = {
+    'device_id': 0,
+    'gpu_mem_limit': 4 * 1024 * 1024 * 1024,  # 4GB
+    'arena_extend_strategy': 'kSameAsRequested',
+}
+```
+
+### 4. Reuse Sessions
+
+```python
+# Create session once
+session = ort.InferenceSession("model.onnx", session_options)
+
+# Reuse for multiple inferences
+for data in dataset:
+    outputs = session.run(None, {'input': data})
+```
+
+### 5. Use I/O Binding
+
+```python
+# Create binding once
+io_binding = session.io_binding()
+
+# Reuse for multiple inferences
+for data in dataset:
+    io_binding.bind_cpu_input('input', data)
+    session.run_with_iobinding(io_binding)
+    outputs = io_binding.copy_outputs_to_cpu()
+    io_binding.clear_binding_inputs()
+```
+
+## Memory Optimization Checklist
+
+- [ ] Enable memory pattern optimization
+- [ ] Enable CPU/GPU memory arenas
+- [ ] Use appropriate arena extension strategy
+- [ ] Limit GPU memory if needed
+- [ ] Use I/O binding for zero-copy
+- [ ] Enable Memory Optimizer for training (if applicable)
+- [ ] Consider model quantization
+- [ ] Profile memory usage
+- [ ] Use optimal batch sizes
+- [ ] Reuse sessions and bindings
+
+## Troubleshooting
+
+### Out of Memory (OOM) Errors
+
+1. **Reduce batch size**
+   ```python
+   batch_size = batch_size // 2
+   ```
+
+2. **Enable Memory Optimizer** (training)
+   ```bash
+   export ORTMODULE_MEMORY_OPT_LEVEL=1
+   ```
+
+3. **Limit GPU memory**
+   ```python
+   'gpu_mem_limit': 2 * 1024 * 1024 * 1024
+   ```
+
+4. **Use quantized model**
+   ```python
+   quantize_dynamic("model.onnx", "model_q.onnx")
+   ```
+
+### Memory Leaks
+
+1. **Explicitly release outputs**
+   ```python
+   outputs = session.run(None, inputs)
+   del outputs  # Release immediately
+   ```
+
+2. **Clear I/O bindings**
+   ```python
+   io_binding.clear_binding_inputs()
+   io_binding.clear_binding_outputs()
+   ```
+
+3. **Destroy sessions when done**
+   ```python
+   del session
+   ```
+
+## See Also
+
+- [Performance Tuning](/performance/tuning)
+- [Threading and Parallelism](/performance/threading)
+- [Benchmarking Models](/performance/benchmarking)

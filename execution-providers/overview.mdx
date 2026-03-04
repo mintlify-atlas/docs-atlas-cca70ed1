@@ -1,0 +1,241 @@
+---
+title: Execution Providers Overview
+description: Learn about ONNX Runtime execution providers and how to choose the right one for your hardware
+---
+
+# Execution Providers Overview
+
+Execution Providers (EPs) are the interface between ONNX Runtime and hardware acceleration libraries. They enable ONNX Runtime to execute models on different hardware platforms with optimal performance.
+
+## What are Execution Providers?
+
+Execution Providers abstract the details of hardware-specific acceleration, allowing ONNX Runtime to leverage:
+
+- **GPUs** via CUDA, TensorRT, DirectML, and ROCm
+- **Specialized hardware** like Intel OpenVINO, Qualcomm QNN, and Apple Neural Engine
+- **Web platforms** via WebGPU and WebAssembly
+- **CPU optimizations** through oneDNN and XNNPACK
+
+## How Execution Providers Work
+
+When you create an inference session, you specify execution providers in order of priority. ONNX Runtime will:
+
+1. Attempt to assign operators to the first provider
+2. Fall back to subsequent providers if operators are unsupported
+3. Use the CPU provider as the final fallback
+
+```python
+import onnxruntime as ort
+
+# Providers are tried in order of priority
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+```
+
+## Available Execution Providers
+
+### GPU Acceleration
+
+| Provider | Platform | Best For |
+|----------|----------|----------|
+| [CUDA](/execution-providers/cuda) | NVIDIA GPUs | General GPU acceleration |
+| [TensorRT](/execution-providers/tensorrt) | NVIDIA GPUs | Maximum performance on NVIDIA |
+| [DirectML](/execution-providers/directml) | Windows | Cross-vendor GPU support on Windows |
+| [ROCm](/execution-providers/rocm) | AMD GPUs | AMD GPU acceleration |
+
+### Specialized Hardware
+
+| Provider | Platform | Best For |
+|----------|----------|----------|
+| [OpenVINO](/execution-providers/openvino) | Intel | Intel CPUs, GPUs, VPUs |
+| [QNN](/execution-providers/qnn) | Qualcomm | Snapdragon processors |
+| [CoreML](/execution-providers/coreml) | Apple | iOS, macOS devices |
+
+### Web Platforms
+
+| Provider | Platform | Best For |
+|----------|----------|----------|
+| [WebGPU](/execution-providers/webgpu) | Browsers | GPU acceleration in browsers |
+| WebAssembly | Browsers | CPU inference in browsers |
+
+### CPU Optimization
+
+| Provider | Platform | Best For |
+|----------|----------|----------|
+| oneDNN | Intel CPUs | Intel CPU optimization |
+| XNNPACK | Mobile/ARM | Mobile and ARM devices |
+
+## Choosing an Execution Provider
+
+### By Platform
+
+**Windows Desktop/Server**
+- NVIDIA GPU: CUDA or TensorRT
+- AMD GPU: DirectML
+- Intel GPU: DirectML or OpenVINO
+- CPU: OpenVINO (Intel) or CPU EP
+
+**Linux Server**
+- NVIDIA GPU: CUDA or TensorRT
+- AMD GPU: ROCm
+- Intel: OpenVINO
+- CPU: CPU EP or oneDNN
+
+**Mobile Devices**
+- iOS/macOS: CoreML
+- Android (Qualcomm): QNN
+- Android (other): NNAPI
+
+**Web/Browser**
+- GPU: WebGPU
+- CPU: WebAssembly
+
+### By Use Case
+
+**Maximum Performance (Server)**
+- NVIDIA: TensorRT with FP16/INT8
+- AMD: ROCm
+- Intel: OpenVINO
+
+**Cross-Platform Compatibility**
+- DirectML (Windows)
+- CPU EP (all platforms)
+
+**Low Latency (Edge/Mobile)**
+- CoreML (Apple devices)
+- QNN (Qualcomm)
+- NNAPI (Android)
+
+**Development/Testing**
+- CPU EP (reference implementation)
+
+## Configuration Example
+
+### Python
+
+```python
+import onnxruntime as ort
+
+# Basic usage
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+)
+
+# With provider options
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ('CUDAExecutionProvider', {
+            'device_id': 0,
+            'arena_extend_strategy': 'kNextPowerOfTwo',
+            'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
+            'cudnn_conv_algo_search': 'EXHAUSTIVE',
+            'do_copy_in_default_stream': True,
+        }),
+        'CPUExecutionProvider'
+    ]
+)
+```
+
+### C++
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+Ort::SessionOptions session_options;
+
+// Add CUDA provider
+OrtCUDAProviderOptions cuda_options;
+cuda_options.device_id = 0;
+session_options.AppendExecutionProvider_CUDA(cuda_options);
+
+Ort::Session session(env, "model.onnx", session_options);
+```
+
+### C#
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+
+var sessionOptions = new SessionOptions();
+sessionOptions.AppendExecutionProvider_CUDA(0);
+
+using var session = new InferenceSession("model.onnx", sessionOptions);
+```
+
+## Provider Priority and Fallback
+
+Providers are evaluated in the order specified. If a provider cannot handle an operator:
+
+1. The operator is assigned to the next provider in the list
+2. The session may use multiple providers for different operators
+3. CPU provider handles any remaining operators
+
+```python
+# TensorRT will handle compatible ops, CUDA handles others
+session = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        'TensorrtExecutionProvider',
+        'CUDAExecutionProvider',
+        'CPUExecutionProvider'
+    ]
+)
+```
+
+## Checking Available Providers
+
+### Python
+
+```python
+import onnxruntime as ort
+
+# List all available providers
+print(ort.get_available_providers())
+# Output: ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+
+# Check which providers are used by a session
+session = ort.InferenceSession("model.onnx")
+print(session.get_providers())
+```
+
+### C++
+
+```cpp
+#include <onnxruntime_cxx_api.h>
+
+auto available_providers = Ort::GetAvailableProviders();
+for (const auto& provider : available_providers) {
+    std::cout << provider << std::endl;
+}
+```
+
+## Performance Considerations
+
+### Memory Management
+
+- Configure arena allocation strategies for GPU providers
+- Set memory limits to prevent OOM errors
+- Use memory-efficient data types (FP16, INT8) when supported
+
+### Data Transfer
+
+- Minimize CPU-GPU data transfers
+- Use I/O binding for zero-copy operations
+- Keep data on device between inferences when possible
+
+### Graph Optimization
+
+- Enable graph optimizations (on by default)
+- Some providers apply additional optimizations
+- TensorRT and OpenVINO build optimized engines
+
+## Next Steps
+
+- Learn about specific providers: [CUDA](/execution-providers/cuda), [TensorRT](/execution-providers/tensorrt), [DirectML](/execution-providers/directml)
+- Explore [performance tuning](/performance/tuning)
+- See [model optimization](/inference/model-optimization) for preprocessing steps
