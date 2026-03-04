@@ -1,0 +1,175 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "ONNX Runtime",
+  "projectDescription": "Cross-platform, high-performance ML inferencing and training accelerator for deep learning models.",
+  "theme": "sequoia",
+  "primaryColor": "#646464",
+  "lightColor": "#424242",
+  "darkColor": "#bbbbbb",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/onnx-format",
+              "concepts/execution-providers",
+              "concepts/sessions",
+              "concepts/graph-optimizations"
+            ]
+          },
+          {
+            "group": "Inference",
+            "pages": [
+              "inference/overview",
+              "inference/python-api",
+              "inference/c-cpp-api",
+              "inference/csharp-api",
+              "inference/java-api",
+              "inference/javascript-api",
+              "inference/model-optimization"
+            ]
+          },
+          {
+            "group": "Training",
+            "pages": [
+              "training/overview",
+              "training/on-device-training",
+              "training/ortmodule",
+              "training/distributed-training"
+            ]
+          },
+          {
+            "group": "Execution Providers",
+            "pages": [
+              "execution-providers/overview",
+              "execution-providers/cuda",
+              "execution-providers/tensorrt",
+              "execution-providers/directml",
+              "execution-providers/openvino",
+              "execution-providers/coreml",
+              "execution-providers/qnn",
+              "execution-providers/webgpu"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": [
+              "performance/tuning",
+              "performance/benchmarking",
+              "performance/memory-optimization",
+              "performance/threading"
+            ]
+          },
+          {
+            "group": "Model Conversion",
+            "pages": [
+              "model-conversion/pytorch",
+              "model-conversion/tensorflow",
+              "model-conversion/scikit-learn",
+              "model-conversion/quantization"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-operators",
+              "advanced/ort-format",
+              "advanced/mobile-deployment",
+              "advanced/webassembly",
+              "advanced/server-deployment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Python API",
+            "pages": [
+              "api/python/inference-session",
+              "api/python/session-options",
+              "api/python/run-options",
+              "api/python/io-binding",
+              "api/python/providers",
+              "api/python/quantization",
+              "api/python/transformers"
+            ]
+          },
+          {
+            "group": "C/C++ API",
+            "pages": [
+              "api/c-cpp/overview",
+              "api/c-cpp/ort-api",
+              "api/c-cpp/session",
+              "api/c-cpp/tensors",
+              "api/c-cpp/providers"
+            ]
+          },
+          {
+            "group": "C# API",
+            "pages": [
+              "api/csharp/inference-session",
+              "api/csharp/session-options",
+              "api/csharp/tensors"
+            ]
+          },
+          {
+            "group": "Java API",
+            "pages": [
+              "api/java/overview",
+              "api/java/ort-session",
+              "api/java/ort-environment"
+            ]
+          },
+          {
+            "group": "JavaScript API",
+            "pages": [
+              "api/javascript/inference-session",
+              "api/javascript/tensor",
+              "api/javascript/web",
+              "api/javascript/node"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Cross-platform inference and training for ONNX models",
+    "Hardware acceleration via execution providers (CUDA, TensorRT, DirectML, CoreML, etc.)",
+    "Multi-language support (Python, C/C++, C#, Java, JavaScript)",
+    "Graph optimizations for improved performance",
+    "Model quantization and optimization tools",
+    "Support for PyTorch, TensorFlow, and scikit-learn model conversion",
+    "Training acceleration with ORTModule",
+    "Mobile and web deployment capabilities"
+  ],
+  "publicApiSurface": [
+    "InferenceSession (Python)",
+    "SessionOptions (Python)",
+    "RunOptions (Python)",
+    "IOBinding (Python)",
+    "OrtApi (C API)",
+    "Ort::Session (C++ API)",
+    "Ort::Env (C++ API)",
+    "InferenceSession (C#)",
+    "OrtSession (Java)",
+    "InferenceSession (JavaScript)",
+    "onnxruntime.quantization",
+    "onnxruntime.transformers",
+    "onnxruntime.training.ortmodule"
+  ]
+}
